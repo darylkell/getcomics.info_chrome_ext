@@ -1,0 +1,20 @@
+{
+    "manifest_version": 3,
+    "name": "My Comics Downloader",
+    "version": "1.0",
+    "permissions": [
+      "storage",
+      "downloads",
+      "activeTab",
+      "scripting",
+      "tabs"
+    ],
+    "host_permissions": [
+      "*://getcomics.info/*",
+      "*://getcomics.org/*"
+    ],
+    "action": {
+      "default_popup": "opentab.html"
+    }
+}
+ 
