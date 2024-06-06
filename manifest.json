@@ -1,6 +1,6 @@
 {
     "manifest_version": 3,
-    "name": "My Comics Downloader",
+    "name": "getcomics.info downloader",
     "version": "1.0",
     "permissions": [
       "storage",
