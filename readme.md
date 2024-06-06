@@ -1,6 +1,6 @@
 
-# getcomics.info
-Sequentially download series from getcomics.info.
+# getcomics.info - chrome extension
+Sequentially download series from getcomics.info. This is not a release by getcomics.info.
 <br><br>
 Allows you to add comic series along with a date. When you 'get recent' it will search for comics released since the date and download them. To avoid over-burdening getcomics.info and maintain optimal speed on individual downloads, it sequentially downloads any matching comics released on getcomics.info since the date.<br>
 Track the output via the output pane and searching/downloading status via browser tab title.
