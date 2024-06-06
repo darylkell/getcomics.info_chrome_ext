@@ -13,7 +13,7 @@ Series and dates are synced to the Chrome profile.
 This release is a non-fuss and non-glossy interface which may not be updated in the future.
 
 ## Installation
-Download files and install as via 'Load Unpacked' method. Be aware that there are no safety rails here and while I'm telling you this codebase is clean (and unobfuscated/non-minified for transparency), you should still read the security warning below.
+Download files and install in any Chromium-based browser via the developer mode 'Load Unpacked' method. Be aware that there are no safety rails here and while I'm telling you this codebase is clean (and unobfuscated/non-minified for transparency), you should still heed the security warning below.
 
 ### Security Warning
 ------
