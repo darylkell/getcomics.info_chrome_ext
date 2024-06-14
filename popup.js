@@ -23,6 +23,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
     addSeriesButton.addEventListener("click", addSeries);
   
+
     seriesInput.addEventListener("keyup", function(event) {
         if (seriesInput.value.trim() == "") {
             addSeriesButton.disabled = true;
@@ -31,6 +32,7 @@ document.addEventListener("DOMContentLoaded", function() {
         else {
             addSeriesButton.disabled = false;
         }
+
 
         if (event.key === "Enter") {
             addSeries();
@@ -143,6 +145,7 @@ function displaySeries(series) {
         checkboxes.forEach(checkbox => {
             checkbox.checked = this.checked;
         });
+
         getRecentButton.disabled = ![...document.querySelectorAll(".series-checkbox")].some(
             checkbox => checkbox.checked
         )
@@ -308,6 +311,7 @@ async function searchAndDownloadSeries(seriesName, date) {
 
         for (let link of downloadLinks) {
             log(`    [${getCurrentTime()}] ↓ Downloading\n    ${link.href}\n`, "verbose")
+
             try {
                 await downloadFile(link.href);
             } catch (error) {
@@ -429,7 +433,6 @@ function downloadFile(url) {
                     console.log(downloadDelta);
                 }
             });
-
         });
     });
 }
