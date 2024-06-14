@@ -1,19 +1,33 @@
 <!DOCTYPE html>
 <html>
 <head>
+  <meta charset="UTF-8">
   <title>getcomics.info downloader</title>
   <link rel="stylesheet" type="text/css" href="styles.css">
 </head>
 <body>
   <h1>getcomics.info downloader</h1>
-  <div>
+  <div class="container" style="display: inline-block">
     <input type="text" id="comic-series" placeholder="Add comic series">
     <input type="text" id="comic-series-date" placeholder="YYYY-MM-DD" title="Date to search from">
     <button id="add-series">Add</button>
     <button id="get-recent">Get Recent</button>
+    <label for="verboseCheckbox">Verbose</label>
+    <input type="checkbox" id="verboseCheckbox" name="verboseCheckbox">
   </div>
-  <ul id="series-list"></ul>
-  <div id="output"></div>
+  
+  <div class="container">
+    <ul id="series-list"></ul>
+    <div id="imageContainer">
+      <img>
+      <span id="downloadingTitle"></span>
+    </div>
+  </div>
+
+  <div class="container">
+    <textarea id="output" readonly></textarea>
+    <textarea id="verboseOutput" readonly></textarea>
+  </div>
   <script src="popup.js"></script>
 </body>
 </html>

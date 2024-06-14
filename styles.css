@@ -1,6 +1,6 @@
 body {
   font-family: Arial, sans-serif;
-  width: 400px; /* Set the width of the popup */
+
   padding: 10px;
 }
 
@@ -23,9 +23,55 @@ h1 {
   width: 100px;
 }
 
+.container {
+  display: flex;
+  align-items: center
+}
+
+#imageContainer {
+  display: flex;
+  flex-direction: column; /* Arrange items vertically */
+  align-items: center; /* Center items horizontally */
+  margin: auto; /* Push secondDiv to the right */
+}
+
+#imageContainer img {
+  display: block;
+  margin: 0 auto; /* Center the image horizontally */
+  max-width: 100%;
+  height: 400px;
+}
+
+.container label,
+.container input[type="checkbox"] {
+  vertical-align: middle;
+}
+
+#downloadingTitle {
+  display: block;
+  text-align: center;
+  margin-top: 10px;
+}
+
+label {
+  margin-left: 10px;
+}
+
+#output {
+  width: calc(50% - 10px);
+  height: 450px;
+  overflow-y: auto;
+  border: 1px solid #ccc;
+  padding: 10px;
+  margin-top: 10px;
+  resize: vertical;
+}
+
 #series-list {
   list-style-type: none;
+  margin: 0;
   padding: 0;
+  margin-top: 10px;
 }
 
 #series-list li {
@@ -47,12 +93,14 @@ h1 {
   flex: 1;
 }
 
-#output {
-  width: 100%; /* Set the width of the output section to 100% */
-  height: 200px; /* Set the height of the output section */
-  overflow-y: auto; /* Enable vertical scroll if content exceeds the height */
+#verboseOutput {
+  display: none;
+  width: calc(50% - 10px);
+  height: 450px;
+  overflow-y: auto;
   border: 1px solid #ccc;
   padding: 10px;
   margin-top: 10px;
+  margin-left: 30px;
+  resize: vertical;
 }
-  

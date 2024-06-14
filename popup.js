@@ -1,68 +1,97 @@
-var seriesList = document.getElementById('series-list');
-var addSeriesButton = document.getElementById('add-series');
-var seriesInput = document.getElementById('comic-series');
-var dateInput = document.getElementById('comic-series-date');
-var getRecentButton = document.getElementById('get-recent');
-var output = document.getElementById('output');
+var seriesList = document.getElementById("series-list");
+var addSeriesButton = document.getElementById("add-series");
+var seriesInput = document.getElementById("comic-series");
+var dateInput = document.getElementById("comic-series-date");
+var getRecentButton = document.getElementById("get-recent");
+var output = document.getElementById("output");
+var verboseOutput = document.getElementById("verboseOutput");
+var verboseCheckbox = document.getElementById("verboseCheckbox");
 
 var title = "getcomics.info downloader";
 
-document.addEventListener('DOMContentLoaded', function() {
-    chrome.storage.sync.get('comicSeries', function(data) {
+document.addEventListener("DOMContentLoaded", function() {
+    chrome.storage.sync.get("comicSeries", function(data) {
         displaySeries(data.comicSeries || []);
     });
 
-    addSeriesButton.addEventListener('click', addSeries);
+    chrome.storage.sync.get("getcomics_checkboxStatus", function(data) {
+        if (data.getcomics_checkboxStatus) {
+            verboseCheckbox.click();
+        }
+    });
+
+    addSeriesButton.addEventListener("click", addSeries);
   
-    seriesInput.addEventListener('keydown', function(event) {
-        if (event.key === 'Enter') {
+    seriesInput.addEventListener("keydown", function(event) {
+        if (event.key === "Enter") {
             addSeries();
         }
     });
-    dateInput.addEventListener('keydown', function(event) {
-        if (event.key === 'Enter') {
+    dateInput.addEventListener("keydown", function(event) {
+        if (event.key === "Enter") {
             addSeries();
         }
     });
   
-    // Get recent issues
-    getRecentButton.addEventListener('click', function() {
-        log("Fetching new issues...<br>");
-        chrome.storage.sync.get('comicSeries', async function(data) {
+    getRecentButton.addEventListener("click", function() {
+        log(`[${getCurrentTime()}]  Fetching new issues...\n`);
+        chrome.storage.sync.get("comicSeries", async function(data) {
+            var pagesFoundWithoutDownloadButtons = [];
             const series = data.comicSeries || [];
             
             for (let s of sorted(series)) {
-                // download one series at a time
-                await searchAndDownloadSeries(s.name, s.date)
+                // only download series that have been selected
+                if (!document.querySelector(`input[value="${s.name}"]`).checked) {
+                    continue
+                }
+
+                // download one series at a time, track pages we will have to download manually
+                let pagesNoButtons = await searchAndDownloadSeries(s.name, s.date);
+                pagesFoundWithoutDownloadButtons.concat(pagesNoButtons);
             }
-            log("<br>All series processed.<br>");
+            log(`\n[${getCurrentTime()}]  All series processed.\n`);
+
+            if (pagesFoundWithoutDownloadButtons.length != 0) {
+                log("\nDownload buttons could not be found on the following pages:");
+                for (page of pagesFoundWithoutDownloadButtons) {
+                    log(` - ${pagesFoundWithoutDownloadButtons.title}`);
+                    log(`   ${pagesFoundWithoutDownloadButtons.url}\n`)
+                }
+                log("\n")
+            }
         });
     });
+
+    verboseCheckbox.addEventListener("click", function () {
+        verboseOutput.style.display = verboseCheckbox.checked ? "block" : "none";
+        chrome.storage.sync.set({ "getcomics_checkboxStatus": verboseCheckbox.checked });
+    })
 });
 
 
-function log(text, flush) {
+function log(text, verbose, flush) {
+    const textArea = verbose == undefined ? output : verboseOutput;
     if (flush) {
-        output.innerHTML = text;
+        textArea.value = text;
     }
     else {
-        output.innerHTML += `<br>${text}`;
+        textArea.value += `\n${text}`;
     }
-    output.scrollTop = output.scrollHeight;
+    textArea.scrollTop = textArea.scrollHeight;
 }
 
 function addSeries() {
     /**
      * Add new series to the DOM and chrome.storage.sync
      **/ 
-    const seriesName = seriesInput.value.trim();
+    const seriesName = seriesInput.value.trim().replace(/"/g, "'");
     const seriesDate = dateInput.value.trim() || getCurrentDate();
 
     if (!seriesName) {
         return
     }
 
-    chrome.storage.sync.get('comicSeries', function(data) {
+    chrome.storage.sync.get("comicSeries", function(data) {
         const series = data.comicSeries || [];
 
         var alreadyExists = series.some(obj => obj.name.toLowerCase() == seriesName.toLowerCase());
@@ -83,8 +112,8 @@ function addSeries() {
             {comicSeries: series}, 
             function() {
                 displaySeries(series);
-                seriesInput.value = '';
-                dateInput.value = '';
+                seriesInput.value = "";
+                dateInput.value = "";
             }
         );
     });
@@ -92,16 +121,55 @@ function addSeries() {
 
 
 function displaySeries(series) {
-    seriesList.innerHTML = '';
+    seriesList.innerHTML = "";
 
-    for (let { name, date } of sorted(series)) {
-        const listItem = document.createElement('li');
-        listItem.innerHTML = `${name} (Last Updated: ${date}) <button class="remove-series">x</button>`;
-        seriesList.appendChild(listItem);
-
-        listItem.querySelector('.remove-series').addEventListener('click', () => {
-            removeSeries(name);
+    // Add 'Select All' checkbox
+    const selectAllCheckbox = document.createElement("input");
+    selectAllCheckbox.type = "checkbox";
+    selectAllCheckbox.id = "selectAllCheckbox";
+    selectAllCheckbox.addEventListener("change", function() {
+        const checkboxes = document.querySelectorAll(".series-checkbox");
+        checkboxes.forEach(checkbox => {
+            checkbox.checked = this.checked;
         });
+    });
+
+    const selectAllLabel = document.createElement("label");
+    selectAllLabel.htmlFor = "selectAllCheckbox";
+    selectAllLabel.textContent = "Select All";
+
+    const selectAllListItem = document.createElement("li");
+    selectAllListItem.appendChild(selectAllCheckbox);
+    selectAllListItem.appendChild(selectAllLabel);
+    seriesList.appendChild(selectAllListItem);
+
+    // Add series with checkboxes and remove button
+    for (let { name, date } of sorted(series)) {
+        const listItem = document.createElement("li");
+
+        const seriesCheckbox = document.createElement("input");
+        seriesCheckbox.type = "checkbox";
+        seriesCheckbox.className = "series-checkbox";
+        seriesCheckbox.value = name;
+        seriesCheckbox.id = `checkbox-${name}`;
+
+        const removeButton = document.createElement("button");
+        removeButton.className = "remove-series";
+        removeButton.textContent = "x";
+        removeButton.addEventListener("click", () => {
+            removeSeries(name);
+            listItem.remove();
+        });
+
+        const seriesLabel = document.createElement("label");
+        seriesLabel.htmlFor = `checkbox-${name}`;
+        seriesLabel.textContent = `${name} (Last Updated: ${date})`;
+
+        listItem.appendChild(seriesCheckbox);
+        listItem.appendChild(removeButton);
+        listItem.appendChild(seriesLabel);
+
+        seriesList.appendChild(listItem);
     }
 }
 
@@ -110,15 +178,15 @@ function addSeriesToList(seriesName) {
     /**
      * Adds series to the DOM
      **/
-    const li = document.createElement('li');
+    const li = document.createElement("li");
 
-    const removeButton = document.createElement('button');
-    removeButton.textContent = 'x';
-    removeButton.addEventListener('click', function() {
+    const removeButton = document.createElement("button");
+    removeButton.textContent = "x";
+    removeButton.addEventListener("click", function() {
         removeSeries(seriesName);
     });
 
-    const seriesSpan = document.createElement('span');
+    const seriesSpan = document.createElement("span");
     seriesSpan.textContent = seriesName;
 
     li.appendChild(removeButton);
@@ -133,16 +201,8 @@ function removeSeries(seriesName) {
      * series in the DOM to match the new list
      * 
      **/
-    chrome.storage.sync.get('comicSeries', function(data) {
+    chrome.storage.sync.get("comicSeries", function(data) {
         let series = data.comicSeries || [];
-        // series = series.filter(s => s !== seriesName);
-        // chrome.storage.sync.set(
-        //     {comicSeries: series}, 
-        //     function() {
-        //         seriesList.innerHTML = '';
-        //         series.forEach(addSeriesToList);
-        //     }
-        // );
         const updatedSeries = series.filter(s => s.name !== seriesName);
         chrome.storage.sync.set(
             {comicSeries: updatedSeries},
@@ -166,17 +226,14 @@ async function searchAndDownloadSeries(seriesName, date) {
     const parser = new DOMParser();
 
     document.querySelector("title").innerText = `[Searching] ${title}`;
+    
+    var pagesFoundWithoutDownloadButtons = [];
     var comicLinks = [];
-    var page = -1;
+    var page = 0;
     while (true) {
         page++;
-        if (page == 0) {
-            var searchUrl = `https://getcomics.info/?s=${encodeURIComponent(seriesName).replace(/%20/g, '+')}`;
-        }
-        else {
-            var searchUrl = `https://getcomics.info/page/${page}?s=${encodeURIComponent(seriesName).replace(/%20/g, '+')}`;
-        }
-        
+        var searchUrl = `https://getcomics.info/page/${page}?s=${encodeURIComponent(seriesName).replace(/%20/g, "+")}`;
+
         var response = await fetch(searchUrl);
 
         // found the limit of results
@@ -187,7 +244,7 @@ async function searchAndDownloadSeries(seriesName, date) {
         var html = await response.text();
   
         var newLinks = getComicDetails(
-            parser.parseFromString(html, 'text/html'),
+            parser.parseFromString(html, "text/html"),
             date
         )
 
@@ -199,32 +256,52 @@ async function searchAndDownloadSeries(seriesName, date) {
         comicLinks = comicLinks.concat(newLinks);
     }
 
+
+    if (comicLinks.length) {
+        log(`                 --- ${seriesName} ---`, "verbose")
+    }
+
     let downloadingText = comicLinks.length == 1 ?  
         "comic found. Downloading..." :
         comicLinks.length > 1 ? 
             "comics found. Downloading..." :
             "comics found."
-    log(`${seriesName}: ${comicLinks.length} ${downloadingText}`);
+    log(`${seriesName}:  ${comicLinks.length} ${downloadingText}`);
 
     // download comic links from the found comics one at a time
     var i = 0;
     for (let comicLink of comicLinks) {
         i++;
         document.querySelector("title").innerText = `[Downloading ${i}/${comicLinks.length}] ${title}`;
+
         var response = await fetch(comicLink.url);
         var data = await response.text();
-        var html = parser.parseFromString(data, 'text/html');
-        
+        var html = parser.parseFromString(data, "text/html");
         var downloadLinks = html.querySelectorAll("a[title='DOWNLOAD NOW' i]");
 
+        if (downloadLinks.length == 0) {
+            log(` 🔗 ${comicLink.url}\n    ❌ Download buttons found:  0\n`, "verbose");
+            pagesFoundWithoutDownloadButtons.push(comicLink)
+            continue
+        }
+        
+        log(` 🔗 ${comicLink.url}\n    ✅ Download buttons found:  ${downloadLinks.length}\n`, "verbose");
+
+        document.querySelector("img").src = comicLink.image;
+        document.querySelector("#downloadingTitle").innerText = `Downloading '${comicLink.title}'`;
+
         for (let link of downloadLinks) {
+            log(`    [${getCurrentTime()}] ↓ Downloading\n    ${link.href}\n`, "verbose")
             await downloadFile(link.href);
         }
+
+        document.querySelector("img").src = "";
+        document.querySelector("#downloadingTitle").innerText = "";
     }
     document.querySelector("title").innerText = title;
 
-    // all downloaded, update 'last updated' and refresh the list to show it
-    chrome.storage.sync.get('comicSeries', function(data) {
+    // all downloaded, update "last updated" and refresh the list to show it
+    chrome.storage.sync.get("comicSeries", function(data) {
         const series = data.comicSeries || [];
 
         try {
@@ -247,6 +324,8 @@ async function searchAndDownloadSeries(seriesName, date) {
             }
         );
     });
+
+    return pagesFoundWithoutDownloadButtons;
 }
 
 
@@ -274,7 +353,8 @@ function getComicDetails(html, date) {
             pages.push({
                 title: title_tag.innerText,
                 url: title_tag.querySelector("a").href,
-                time: comicDate
+                time: comicDate,
+                image: article.querySelector("img").src
             })
         }
     }
@@ -294,12 +374,14 @@ function downloadFile(url) {
                 reject(chrome.runtime.lastError);
             } else {
                 chrome.downloads.onChanged.addListener(function onChanged(downloadDelta) {
-                    if (downloadDelta.id === downloadId && downloadDelta.state && downloadDelta.state.current === 'complete') {
+                    if (downloadDelta.id === downloadId && downloadDelta.state && downloadDelta.state.current === "complete") {
                         chrome.downloads.onChanged.removeListener(onChanged);
                         resolve();
-                    } else if (downloadDelta.id === downloadId && downloadDelta.state && downloadDelta.state.current === 'interrupted') {
+                    } else if (downloadDelta.id === downloadId && downloadDelta.state && downloadDelta.state.current === "interrupted") {
                         chrome.downloads.onChanged.removeListener(onChanged);
-                        reject(new Error('Download interrupted'));
+                        // this code below raises an error and breaks the calling function
+                        // TODO: in the calling function, catch the exception
+                        reject(new Error("Download interrupted"));
                     }
                 });
             }
@@ -310,7 +392,7 @@ function downloadFile(url) {
 
 function parseDate(dateString) {
     // Split the string into an array of [year, month, day]
-    const parts = dateString.split('-');
+    const parts = dateString.split("-");
     
     // Note: JavaScript months are 0-based, so subtract 1 from the month
     const year = parseInt(parts[0], 10);
@@ -342,8 +424,17 @@ function sorted(list) {
 function getCurrentDate() {
     const today = new Date();
     const year = today.getFullYear();
-    const month = String(today.getMonth() + 1).padStart(2, '0'); // Months are zero-based
-    const day = String(today.getDate()).padStart(2, '0');
+    const month = String(today.getMonth() + 1).padStart(2, "0"); // Months are zero-based
+    const day = String(today.getDate()).padStart(2, "0");
     
     return `${year}-${month}-${day}`;
+}
+
+function getCurrentTime() {
+    const now = new Date();
+    let hours = now.getHours().toString().padStart(2, "0"); // Ensure 2 digits
+    let minutes = now.getMinutes().toString().padStart(2, "0"); // Ensure 2 digits
+    let seconds = now.getSeconds().toString().padStart(2, "0"); // Ensure 2 digits
+
+    return `${hours}:${minutes}:${seconds}`;
 }
