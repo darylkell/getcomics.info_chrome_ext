@@ -4,6 +4,8 @@ var seriesInput = document.getElementById('comic-series');
 var dateInput = document.getElementById('comic-series-date');
 var getRecentButton = document.getElementById('get-recent');
 var output = document.getElementById('output');
+var verboseOutput = document.getElementById('verboseOutput');
+var verboseCheckbox = document.getElementById('verboseCheckbox');
 
 var title = "getcomics.info downloader";
 
@@ -25,30 +27,45 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
   
-    // Get recent issues
     getRecentButton.addEventListener('click', function() {
-        log("Fetching new issues...<br>");
+        log(`[${getCurrentTime()}]  Fetching new issues...\n`);
         chrome.storage.sync.get('comicSeries', async function(data) {
+            var pagesFoundWithoutDownloadButtons = [];
             const series = data.comicSeries || [];
             
             for (let s of sorted(series)) {
-                // download one series at a time
-                await searchAndDownloadSeries(s.name, s.date)
+                // download one series at a time, track pages we will have to download manually
+                let pagesNoButtons = await searchAndDownloadSeries(s.name, s.date);
+                pagesFoundWithoutDownloadButtons.concat(pagesNoButtons);
             }
-            log("<br>All series processed.<br>");
+            log(`\n[${getCurrentTime()}]  All series processed.\n`);
+
+            if (pagesFoundWithoutDownloadButtons.length != 0) {
+                log("\nDownload buttons could not be found on the following pages:");
+                for (page of pagesFoundWithoutDownloadButtons) {
+                    log(` - ${pagesFoundWithoutDownloadButtons.title}`);
+                    log(`   ${pagesFoundWithoutDownloadButtons.url}\n`)
+                }
+                log("\n")
+            }
         });
     });
+
+    verboseCheckbox.addEventListener("click", function () {
+        verboseOutput.style.display = verboseCheckbox.checked ? "block" : "none";
+    })
 });
 
 
-function log(text, flush) {
+function log(text, verbose, flush) {
+    const textArea = verbose == undefined ? output : verboseOutput;
     if (flush) {
-        output.innerHTML = text;
+        textArea.value = text;
     }
     else {
-        output.innerHTML += `<br>${text}`;
+        textArea.value += `\n${text}`;
     }
-    output.scrollTop = output.scrollHeight;
+    textArea.scrollTop = textArea.scrollHeight;
 }
 
 function addSeries() {
@@ -166,17 +183,14 @@ async function searchAndDownloadSeries(seriesName, date) {
     const parser = new DOMParser();
 
     document.querySelector("title").innerText = `[Searching] ${title}`;
+    
+    var pagesFoundWithoutDownloadButtons = [];
     var comicLinks = [];
-    var page = -1;
+    var page = 0;
     while (true) {
         page++;
-        if (page == 0) {
-            var searchUrl = `https://getcomics.info/?s=${encodeURIComponent(seriesName).replace(/%20/g, '+')}`;
-        }
-        else {
-            var searchUrl = `https://getcomics.info/page/${page}?s=${encodeURIComponent(seriesName).replace(/%20/g, '+')}`;
-        }
-        
+        var searchUrl = `https://getcomics.info/page/${page}?s=${encodeURIComponent(seriesName).replace(/%20/g, '+')}`;
+
         var response = await fetch(searchUrl);
 
         // found the limit of results
@@ -199,27 +213,47 @@ async function searchAndDownloadSeries(seriesName, date) {
         comicLinks = comicLinks.concat(newLinks);
     }
 
+
+    if (comicLinks.length) {
+        log(`                 --- ${seriesName} ---`, "verbose")
+    }
+
     let downloadingText = comicLinks.length == 1 ?  
         "comic found. Downloading..." :
         comicLinks.length > 1 ? 
             "comics found. Downloading..." :
             "comics found."
-    log(`${seriesName}: ${comicLinks.length} ${downloadingText}`);
+    log(`${seriesName}:  ${comicLinks.length} ${downloadingText}`);
 
     // download comic links from the found comics one at a time
     var i = 0;
     for (let comicLink of comicLinks) {
         i++;
         document.querySelector("title").innerText = `[Downloading ${i}/${comicLinks.length}] ${title}`;
+
         var response = await fetch(comicLink.url);
         var data = await response.text();
         var html = parser.parseFromString(data, 'text/html');
-        
         var downloadLinks = html.querySelectorAll("a[title='DOWNLOAD NOW' i]");
 
+        if (downloadLinks.length == 0) {
+            log(` 🔗 ${comicLink.url}\n    ❌ Download buttons found:  0\n`, "verbose");
+            pagesFoundWithoutDownloadButtons.push(comicLink)
+            continue
+        }
+        
+        log(` 🔗 ${comicLink.url}\n    ✅ Download buttons found:  ${downloadLinks.length}\n`, "verbose");
+
+        document.querySelector("img").src = comicLink.image;
+        document.querySelector("#downloadingTitle").innerText = `Downloading '${comicLink.title}'`;
+
         for (let link of downloadLinks) {
+            log(`    [${getCurrentTime()}] ↓ Downloading\n    ${link.href}\n`, "verbose")
             await downloadFile(link.href);
         }
+
+        document.querySelector("img").src = "";
+        document.querySelector("#downloadingTitle").innerText = "";
     }
     document.querySelector("title").innerText = title;
 
@@ -247,6 +281,8 @@ async function searchAndDownloadSeries(seriesName, date) {
             }
         );
     });
+
+    return pagesFoundWithoutDownloadButtons;
 }
 
 
@@ -274,7 +310,8 @@ function getComicDetails(html, date) {
             pages.push({
                 title: title_tag.innerText,
                 url: title_tag.querySelector("a").href,
-                time: comicDate
+                time: comicDate,
+                image: article.querySelector("img").src
             })
         }
     }
@@ -299,6 +336,8 @@ function downloadFile(url) {
                         resolve();
                     } else if (downloadDelta.id === downloadId && downloadDelta.state && downloadDelta.state.current === 'interrupted') {
                         chrome.downloads.onChanged.removeListener(onChanged);
+                        // this code below raises an error and breaks the calling function
+                        // TODO: in the calling function, catch the exception
                         reject(new Error('Download interrupted'));
                     }
                 });
@@ -346,4 +385,13 @@ function getCurrentDate() {
     const day = String(today.getDate()).padStart(2, '0');
     
     return `${year}-${month}-${day}`;
+}
+
+function getCurrentTime() {
+    const now = new Date();
+    let hours = now.getHours().toString().padStart(2, '0'); // Ensure 2 digits
+    let minutes = now.getMinutes().toString().padStart(2, '0'); // Ensure 2 digits
+    let seconds = now.getSeconds().toString().padStart(2, '0'); // Ensure 2 digits
+
+    return `${hours}:${minutes}:${seconds}`;
 }
