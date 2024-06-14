@@ -9,6 +9,7 @@ var verboseCheckbox = document.getElementById("verboseCheckbox");
 
 var title = "getcomics.info downloader";
 
+
 document.addEventListener("DOMContentLoaded", function() {
     chrome.storage.sync.get("comicSeries", function(data) {
         displaySeries(data.comicSeries || []);
@@ -22,11 +23,20 @@ document.addEventListener("DOMContentLoaded", function() {
 
     addSeriesButton.addEventListener("click", addSeries);
   
-    seriesInput.addEventListener("keydown", function(event) {
+    seriesInput.addEventListener("keyup", function(event) {
+        if (seriesInput.value.trim() == "") {
+            addSeriesButton.disabled = true;
+            return;
+        }
+        else {
+            addSeriesButton.disabled = false;
+        }
+
         if (event.key === "Enter") {
             addSeries();
         }
     });
+
     dateInput.addEventListener("keydown", function(event) {
         if (event.key === "Enter") {
             addSeries();
@@ -80,6 +90,7 @@ function log(text, verbose, flush) {
     textArea.scrollTop = textArea.scrollHeight;
 }
 
+
 function addSeries() {
     /**
      * Add new series to the DOM and chrome.storage.sync
@@ -132,6 +143,9 @@ function displaySeries(series) {
         checkboxes.forEach(checkbox => {
             checkbox.checked = this.checked;
         });
+        getRecentButton.disabled = ![...document.querySelectorAll(".series-checkbox")].some(
+            checkbox => checkbox.checked
+        )
     });
 
     const selectAllLabel = document.createElement("label");
@@ -152,6 +166,11 @@ function displaySeries(series) {
         seriesCheckbox.className = "series-checkbox";
         seriesCheckbox.value = name;
         seriesCheckbox.id = `checkbox-${name}`;
+        seriesCheckbox.addEventListener("click", () => {
+            getRecentButton.disabled = ![...document.querySelectorAll(".series-checkbox")].some(
+                checkbox => checkbox.checked
+            )
+        });
 
         const removeButton = document.createElement("button");
         removeButton.className = "remove-series";
@@ -219,9 +238,6 @@ async function searchAndDownloadSeries(seriesName, date) {
      * Fetch comics for the series, then parse the comic pages for 
      * downloadable comic links and download them one at a time.
      * 
-     * TODO: use the 'date' variable to control what is downloaded
-     * TODO: consider how instead of date we could do individual issue
-     * numbers
      **/
     const parser = new DOMParser();
 
@@ -292,7 +308,15 @@ async function searchAndDownloadSeries(seriesName, date) {
 
         for (let link of downloadLinks) {
             log(`    [${getCurrentTime()}] ↓ Downloading\n    ${link.href}\n`, "verbose")
-            await downloadFile(link.href);
+            try {
+                await downloadFile(link.href);
+            } catch (error) {
+                if (error.message == "Download removed") {
+                    log(`Download of '${comicLink.title}' was removed by the user. Continuing downloads...`)
+                } else if (error.message == "Download paused") {
+                    log(`Download of '${comicLink.title}' was paused by the user. Continuing downloads...`)
+                }
+            }
         }
 
         document.querySelector("img").src = "";
@@ -371,20 +395,41 @@ function downloadFile(url) {
     return new Promise((resolve, reject) => {
         chrome.downloads.download({ url: url }, (downloadId) => {
             if (chrome.runtime.lastError) {
+                console.log(chrome.runtime.lastError);
                 reject(chrome.runtime.lastError);
-            } else {
-                chrome.downloads.onChanged.addListener(function onChanged(downloadDelta) {
-                    if (downloadDelta.id === downloadId && downloadDelta.state && downloadDelta.state.current === "complete") {
-                        chrome.downloads.onChanged.removeListener(onChanged);
-                        resolve();
-                    } else if (downloadDelta.id === downloadId && downloadDelta.state && downloadDelta.state.current === "interrupted") {
-                        chrome.downloads.onChanged.removeListener(onChanged);
-                        // this code below raises an error and breaks the calling function
-                        // TODO: in the calling function, catch the exception
-                        reject(new Error("Download interrupted"));
-                    }
-                });
-            }
+            } 
+
+            chrome.downloads.onChanged.addListener(function onChanged(downloadDelta) {
+                if (
+                    downloadDelta.id === downloadId && 
+                    downloadDelta.state && 
+                    downloadDelta.state.current === "complete"
+                    ) {
+                    chrome.downloads.onChanged.removeListener(onChanged);
+                    resolve();
+                }
+                else if (
+                    downloadDelta.id === downloadId && 
+                    downloadDelta.paused?.current
+                    ) {
+                    chrome.downloads.onChanged.removeListener(onChanged);
+                    reject(new Error("Download paused"));
+                }
+                else if (
+                    downloadDelta.id === downloadId && 
+                    downloadDelta.state && 
+                    downloadDelta.state.current === "interrupted"
+                    ) {
+                    // if download is removed by user
+                    chrome.downloads.onChanged.removeListener(onChanged);
+                    reject(new Error("Download removed"));
+                }
+                else if (downloadDelta.id === downloadId) {
+                    console.log(`[${getCurrentTime()}]  Unknown download state change:`)
+                    console.log(downloadDelta);
+                }
+            });
+
         });
     });
 }
@@ -429,6 +474,7 @@ function getCurrentDate() {
     
     return `${year}-${month}-${day}`;
 }
+
 
 function getCurrentTime() {
     const now = new Date();
