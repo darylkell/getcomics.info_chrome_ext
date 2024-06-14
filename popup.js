@@ -40,6 +40,11 @@ document.addEventListener("DOMContentLoaded", function() {
             const series = data.comicSeries || [];
             
             for (let s of sorted(series)) {
+                // only download series that have been selected
+                if (!document.querySelector(`input[value="${s.name}"]`).checked) {
+                    continue
+                }
+
                 // download one series at a time, track pages we will have to download manually
                 let pagesNoButtons = await searchAndDownloadSeries(s.name, s.date);
                 pagesFoundWithoutDownloadButtons.concat(pagesNoButtons);
@@ -79,7 +84,7 @@ function addSeries() {
     /**
      * Add new series to the DOM and chrome.storage.sync
      **/ 
-    const seriesName = seriesInput.value.trim();
+    const seriesName = seriesInput.value.trim().replace(/"/g, "'");
     const seriesDate = dateInput.value.trim() || getCurrentDate();
 
     if (!seriesName) {
@@ -118,14 +123,53 @@ function addSeries() {
 function displaySeries(series) {
     seriesList.innerHTML = "";
 
+    // Add 'Select All' checkbox
+    const selectAllCheckbox = document.createElement("input");
+    selectAllCheckbox.type = "checkbox";
+    selectAllCheckbox.id = "selectAllCheckbox";
+    selectAllCheckbox.addEventListener("change", function() {
+        const checkboxes = document.querySelectorAll(".series-checkbox");
+        checkboxes.forEach(checkbox => {
+            checkbox.checked = this.checked;
+        });
+    });
+
+    const selectAllLabel = document.createElement("label");
+    selectAllLabel.htmlFor = "selectAllCheckbox";
+    selectAllLabel.textContent = "Select All";
+
+    const selectAllListItem = document.createElement("li");
+    selectAllListItem.appendChild(selectAllCheckbox);
+    selectAllListItem.appendChild(selectAllLabel);
+    seriesList.appendChild(selectAllListItem);
+
+    // Add series with checkboxes and remove button
     for (let { name, date } of sorted(series)) {
         const listItem = document.createElement("li");
-        listItem.innerHTML = `${name} (Last Updated: ${date}) <button class="remove-series">x</button>`;
-        seriesList.appendChild(listItem);
 
-        listItem.querySelector(".remove-series").addEventListener("click", () => {
+        const seriesCheckbox = document.createElement("input");
+        seriesCheckbox.type = "checkbox";
+        seriesCheckbox.className = "series-checkbox";
+        seriesCheckbox.value = name;
+        seriesCheckbox.id = `checkbox-${name}`;
+
+        const removeButton = document.createElement("button");
+        removeButton.className = "remove-series";
+        removeButton.textContent = "x";
+        removeButton.addEventListener("click", () => {
             removeSeries(name);
+            listItem.remove();
         });
+
+        const seriesLabel = document.createElement("label");
+        seriesLabel.htmlFor = `checkbox-${name}`;
+        seriesLabel.textContent = `${name} (Last Updated: ${date})`;
+
+        listItem.appendChild(seriesCheckbox);
+        listItem.appendChild(removeButton);
+        listItem.appendChild(seriesLabel);
+
+        seriesList.appendChild(listItem);
     }
 }
 
