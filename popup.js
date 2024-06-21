@@ -72,6 +72,7 @@ document.addEventListener("DOMContentLoaded", function() {
                 log("\n")
             }
         });
+        displaySeries(series);
     });
 
     verboseCheckbox.addEventListener("click", function () {
@@ -275,7 +276,6 @@ async function searchAndDownloadSeries(seriesName, date) {
         comicLinks = comicLinks.concat(newLinks);
     }
 
-
     if (comicLinks.length) {
         log(`                 --- ${seriesName} ---`, "verbose")
     }
@@ -347,9 +347,7 @@ async function searchAndDownloadSeries(seriesName, date) {
 
         chrome.storage.sync.set(
             {comicSeries: series}, 
-            function() {
-                displaySeries(series);
-            }
+            function() {}
         );
     });
 
@@ -487,3 +485,21 @@ function getCurrentTime() {
 
     return `${hours}:${minutes}:${seconds}`;
 }
+
+
+
+
+// chrome.storage.sync.get('comicSeries', function(data) {
+//     let comicsList = data.comicSeries || [];
+    
+//     // Update the date for each item in the list
+//     let updatedComicsList = comicsList.map(comic => {
+//         comic.date = "2024-06-14";
+//         return comic;
+//     });
+
+//     // Save the updated list back to chrome.storage.sync
+//     chrome.storage.sync.set({ 'comicSeries': updatedComicsList }, function() {
+//         console.log('Data updated successfully!');
+//     });
+// });
