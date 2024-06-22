@@ -72,7 +72,10 @@ document.addEventListener("DOMContentLoaded", function() {
                 log("\n")
             }
         });
-        displaySeries(series);
+        chrome.storage.sync.get("comicSeries", async function(data) {
+            displaySeries(data.comicSeries || []);
+        });
+        
     });
 
     verboseCheckbox.addEventListener("click", function () {
