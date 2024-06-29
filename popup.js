@@ -304,7 +304,9 @@ async function searchAndDownloadSeries(seriesName, date) {
         var response = await fetch(comicLink.url);
         var data = await response.text();
         var html = parser.parseFromString(data, "text/html");
-        var downloadLinks = html.querySelectorAll("a[title='DOWNLOAD NOW' i]");
+        var downloadLinks1 = html.querySelectorAll("a[title='DOWNLOAD NOW' i]");
+        var downloadLinks2 = [...html.querySelectorAll("a")].filter( a => a.innerText.toLowerCase() == "main server")
+        var downloadLinks = [...downloadLinks1, ...downloadLinks2];
 
         if (downloadLinks.length == 0) {
             log(` 🔗 ${comicLink.url}\n    ❌ Download buttons found:  0\n`, "verbose");
