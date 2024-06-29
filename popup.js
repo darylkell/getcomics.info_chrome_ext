@@ -319,8 +319,12 @@ async function searchAndDownloadSeries(seriesName, date) {
         document.querySelector("img").src = comicLink.image;
         document.querySelector("#downloadingTitle").innerText = `Downloading '${comicLink.title}'`;
 
+        let i = 0;
+        const downloadNumTotalLength = downloadLinks.length.toString().length;
         for (let link of downloadLinks) {
-            log(`    [${getCurrentTime()}] ↓ Downloading\n    ${link.href}\n`, "verbose")
+            i++;
+            let downloadNum = i.toString().padStart(downloadNumTotalLength, "0");
+            log(`    [${getCurrentTime()}] ↓ Downloading ${downloadNum}/${downloadLinks.length}\n    ${link.href}\n`, "verbose")
 
             try {
                 await downloadFile(link.href);
