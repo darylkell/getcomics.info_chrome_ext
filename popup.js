@@ -88,9 +88,9 @@ function downloadAllSelected() {
 
         if (pagesFoundWithoutDownloadButtons.length != 0) {
             log("\nDownload buttons could not be found on the following pages:");
-            for (page of pagesFoundWithoutDownloadButtons) {
-                log(` - ${pagesFoundWithoutDownloadButtons.title}`);
-                log(`   ${pagesFoundWithoutDownloadButtons.url}\n`)
+            for (let page of pagesFoundWithoutDownloadButtons) {
+                log(` - ${page.title}`);
+                log(`   ${page.url}\n`)
             }
             log("\n")
         }
@@ -249,69 +249,66 @@ async function searchAndDownloadSeries(seriesName, date) {
     /**
      * Fetch comics for the series, then parse the comic pages for 
      * downloadable comic links and download them one at a time.
-     * 
      **/
     const parser = new DOMParser();
-
+    const title = document.querySelector("title").innerText;
     document.querySelector("title").innerText = `[Searching] ${title}`;
     
-    var pagesFoundWithoutDownloadButtons = [];
-    var comicLinks = [];
-    var page = 0;
+    let pagesFoundWithoutDownloadButtons = [];
+    let comicLinks = [];
+    let page = 0;
+
     while (true) {
         page++;
-        var searchUrl = `https://getcomics.info/page/${page}?s=${encodeURIComponent(seriesName).replace(/%20/g, "+")}`;
+        const searchUrl = `https://getcomics.info/page/${page}?s=${encodeURIComponent(seriesName).replace(/%20/g, "+")}`;
 
-        var response = await fetch(searchUrl);
+        const response = await fetch(searchUrl);
 
         // found the limit of results
         if (response.status == 404) {
-            break
+            break;
         }
 
-        var html = await response.text();
-  
-        var newLinks = getComicDetails(
-            parser.parseFromString(html, "text/html"),
-            date
-        )
+        const html = await response.text();
+        const newLinks = getComicDetails(parser.parseFromString(html, "text/html"), date);
 
         // haven't found any more links (possibly due to date)
         if (newLinks.length == 0) {
-            break
+            break;
         }
 
         comicLinks = comicLinks.concat(newLinks);
     }
 
     if (comicLinks.length) {
-        log(`                 --- ${seriesName} ---`, "verbose")
+        log(`                 --- ${seriesName} ---`, "verbose");
     }
 
-    let downloadingText = comicLinks.length == 1 ?  
+    const downloadingText = comicLinks.length === 1 ?  
         "comic found. Downloading..." :
         comicLinks.length > 1 ? 
             "comics found. Downloading..." :
-            "comics found."
+            "comics found.";
     log(`${seriesName}:  ${comicLinks.length} ${downloadingText}`);
 
-    // download comic links from the found comics one at a time
-    var i = 0;
-    for (let comicLink of comicLinks) {
-        i++;
-        document.querySelector("title").innerText = `[Downloading ${i}/${comicLinks.length}] ${title}`;
 
-        var response = await fetch(comicLink.url);
-        var data = await response.text();
-        var html = parser.parseFromString(data, "text/html");
-        var downloadLinks1 = html.querySelectorAll("a[title='DOWNLOAD NOW' i]");
-        var downloadLinks2 = [...html.querySelectorAll("a")].filter( a => a.innerText.toLowerCase() == "main server")
-        var downloadLinks = [...downloadLinks1, ...downloadLinks2];
+    const totalLength = comicLinks.length.toString().length;
+    for (let i = 0; i < comicLinks.length; i++) {
+        const comicLink = comicLinks[i];
+        const paddedIndex = (i + 1).toString().padStart(totalLength, "0");
+        document.querySelector("title").innerText = `[Downloading ${paddedIndex}/${comicLinks.length}] ${title}`;
 
-        if (downloadLinks.length == 0) {
+        const response = await fetch(comicLink.url);
+        const data = await response.text();
+        const html = parser.parseFromString(data, "text/html");
+        const downloadLinks1 = html.querySelectorAll("a[title='DOWNLOAD NOW' i]");
+        const downloadLinks2 = [...html.querySelectorAll("a")].filter(a => a.innerText.trim().toLowerCase() === "main server");
+        const downloadLinks = [...downloadLinks1, ...downloadLinks2];
+
+        if (downloadLinks.length === 0) {
             log(` 🔗 ${comicLink.url}\n    ❌ Download buttons found:  0\n`, "verbose");
-            pagesFoundWithoutDownloadButtons.push(comicLink)
-            continue
+            pagesFoundWithoutDownloadButtons.push(comicLink);
+            continue;
         }
         
         log(` 🔗 ${comicLink.url}\n    ✅ Download buttons found:  ${downloadLinks.length}\n`, "verbose");
@@ -319,20 +316,19 @@ async function searchAndDownloadSeries(seriesName, date) {
         document.querySelector("img").src = comicLink.image;
         document.querySelector("#downloadingTitle").innerText = `Downloading '${comicLink.title}'`;
 
-        let i = 0;
         const downloadNumTotalLength = downloadLinks.length.toString().length;
-        for (let link of downloadLinks) {
-            i++;
-            let downloadNum = i.toString().padStart(downloadNumTotalLength, "0");
-            log(`    [${getCurrentTime()}] ↓ Downloading ${downloadNum}/${downloadLinks.length}\n    ${link.href}\n`, "verbose")
+        for (let j = 0; j < downloadLinks.length; j++) {
+            const link = downloadLinks[j];
+            const downloadNum = (j + 1).toString().padStart(downloadNumTotalLength, '0');
+            log(`    [${getCurrentTime()}] ↓ Downloading ${downloadNum}/${downloadLinks.length}\n    ${link.href}\n`, "verbose");
 
             try {
                 await downloadFile(link.href);
             } catch (error) {
-                if (error.message == "Download removed") {
-                    log(`Download of '${comicLink.title}' was removed by the user. Continuing downloads...`)
-                } else if (error.message == "Download paused") {
-                    log(`Download of '${comicLink.title}' was paused by the user. Continuing downloads...`)
+                if (error.message === "Download removed") {
+                    log(`Download of '${comicLink.title}' was removed by the user. Continuing downloads...`);
+                } else if (error.message === "Download paused") {
+                    log(`Download of '${comicLink.title}' was paused by the user. Continuing downloads...`);
                 }
             }
         }
@@ -358,7 +354,7 @@ async function searchAndDownloadSeries(seriesName, date) {
                 return reject(err);
             }
 
-            chrome.storage.sync.set({comicSeries: series}, function() {
+            chrome.storage.sync.set({ comicSeries: series }, function() {
                 resolve();
             });
         });
