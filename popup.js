@@ -22,7 +22,7 @@ document.addEventListener("DOMContentLoaded", function() {
     });
 
     addSeriesButton.addEventListener("click", addSeries);
-  
+
 
     seriesInput.addEventListener("keyup", function(event) {
         if (seriesInput.value.trim() == "") {
@@ -45,38 +45,7 @@ document.addEventListener("DOMContentLoaded", function() {
         }
     });
   
-    getRecentButton.addEventListener("click", function() {
-        log(`[${getCurrentTime()}]  Fetching new issues...\n`);
-        chrome.storage.sync.get("comicSeries", async function(data) {
-            var pagesFoundWithoutDownloadButtons = [];
-            const series = data.comicSeries || [];
-            
-            for (let s of sorted(series)) {
-                // only download series that have been selected
-                if (!document.querySelector(`input[value="${s.name}"]`).checked) {
-                    continue
-                }
-
-                // download one series at a time, track pages we will have to download manually
-                let pagesNoButtons = await searchAndDownloadSeries(s.name, s.date);
-                pagesFoundWithoutDownloadButtons.concat(pagesNoButtons);
-            }
-            log(`\n[${getCurrentTime()}]  All series processed.\n`);
-
-            if (pagesFoundWithoutDownloadButtons.length != 0) {
-                log("\nDownload buttons could not be found on the following pages:");
-                for (page of pagesFoundWithoutDownloadButtons) {
-                    log(` - ${pagesFoundWithoutDownloadButtons.title}`);
-                    log(`   ${pagesFoundWithoutDownloadButtons.url}\n`)
-                }
-                log("\n")
-            }
-        });
-        chrome.storage.sync.get("comicSeries", async function(data) {
-            displaySeries(data.comicSeries || []);
-        });
-        
-    });
+    getRecentButton.addEventListener("click", downloadAllSelected);
 
     verboseCheckbox.addEventListener("click", function () {
         verboseOutput.style.display = verboseCheckbox.checked ? "block" : "none";
@@ -94,6 +63,42 @@ function log(text, verbose, flush) {
         textArea.value += `\n${text}`;
     }
     textArea.scrollTop = textArea.scrollHeight;
+}
+
+
+function downloadAllSelected() {
+    chrome.storage.sync.get("comicSeries", async function(data) {
+        var pagesFoundWithoutDownloadButtons = [];
+        let series = data.comicSeries || [];
+        
+        series = series.filter(
+            s => document.querySelector(`input[value="${s.name}"]`).checked &&
+            s.date < getCurrentDate()
+        );
+        log(`[${getCurrentTime()}]  Fetching new issues for ${series.length} series...\n`);
+
+        let promises = series.map(async (s) => {
+            // download one series at a time, track pages we will have to download manually
+            let pagesNoButtons = await searchAndDownloadSeries(s.name, s.date);
+            pagesFoundWithoutDownloadButtons = pagesFoundWithoutDownloadButtons.concat(pagesNoButtons);
+        });
+        await Promise.all(promises);
+        
+        log(`\n[${getCurrentTime()}]  All series processed.\n`);
+
+        if (pagesFoundWithoutDownloadButtons.length != 0) {
+            log("\nDownload buttons could not be found on the following pages:");
+            for (page of pagesFoundWithoutDownloadButtons) {
+                log(` - ${pagesFoundWithoutDownloadButtons.title}`);
+                log(`   ${pagesFoundWithoutDownloadButtons.url}\n`)
+            }
+            log("\n")
+        }
+
+        chrome.storage.sync.get("comicSeries", async function(data) {
+            displaySeries(data.comicSeries || []);
+        });
+    }); 
 }
 
 
@@ -332,26 +337,25 @@ async function searchAndDownloadSeries(seriesName, date) {
     document.querySelector("title").innerText = title;
 
     // all downloaded, update "last updated" and refresh the list to show it
-    chrome.storage.sync.get("comicSeries", function(data) {
-        const series = data.comicSeries || [];
+    await new Promise((resolve, reject) => {
+        chrome.storage.sync.get("comicSeries", function(data) {
+            const series = data.comicSeries || [];
 
-        try {
-            for (let obj of series) {
-                if (obj.name.toLowerCase() == seriesName.toLowerCase()) {
-                    obj.date = getCurrentDate();
-                    break
+            try {
+                for (let obj of series) {
+                    if (obj.name.toLowerCase() === seriesName.toLowerCase()) {
+                        obj.date = getCurrentDate();
+                        break;
+                    }
                 }
+            } catch (err) {
+                return reject(err);
             }
-        }
-        catch (err) {
-            // could've been deleted in between downloading
-            return
-        }
 
-        chrome.storage.sync.set(
-            {comicSeries: series}, 
-            function() {}
-        );
+            chrome.storage.sync.set({comicSeries: series}, function() {
+                resolve();
+            });
+        });
     });
 
     return pagesFoundWithoutDownloadButtons;
