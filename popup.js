@@ -66,7 +66,43 @@ function log(text, verbose, flush) {
 }
 
 
-function downloadAllSelected() {
+// function downloadAllSelected() {
+//     chrome.storage.sync.get("comicSeries", async function(data) {
+//         var pagesFoundWithoutDownloadButtons = [];
+//         let series = data.comicSeries || [];
+        
+//         series = series.filter(
+//             s => document.querySelector(`input[value="${s.name}"]`).checked &&
+//             s.date < getCurrentDate()
+//         );
+//         log(`[${getCurrentTime()}]  Fetching new issues for ${series.length} series...\n`);
+
+//         let promises = series.map(async (s) => {
+//             // download one series at a time, track pages we will have to download manually
+//             let pagesNoButtons = await searchAndDownloadSeries(s.name, s.date);
+//             pagesFoundWithoutDownloadButtons = pagesFoundWithoutDownloadButtons.concat(pagesNoButtons);
+//         });
+//         await Promise.all(promises);
+        
+//         log(`\n[${getCurrentTime()}]  All series processed.\n`);
+
+//         if (pagesFoundWithoutDownloadButtons.length != 0) {
+//             log("\nDownload buttons could not be found on the following pages:");
+//             for (let page of pagesFoundWithoutDownloadButtons) {
+//                 log(` - ${page.title}`);
+//                 log(`   ${page.url}\n`)
+//             }
+//             log("\n")
+//         }
+
+//         chrome.storage.sync.get("comicSeries", async function(data) {
+//             displaySeries(data.comicSeries || []);
+//         });
+//     }); 
+// }
+
+
+async function downloadAllSelected() {
     chrome.storage.sync.get("comicSeries", async function(data) {
         var pagesFoundWithoutDownloadButtons = [];
         let series = data.comicSeries || [];
@@ -77,12 +113,11 @@ function downloadAllSelected() {
         );
         log(`[${getCurrentTime()}]  Fetching new issues for ${series.length} series...\n`);
 
-        let promises = series.map(async (s) => {
+        for (let s of series) {
             // download one series at a time, track pages we will have to download manually
             let pagesNoButtons = await searchAndDownloadSeries(s.name, s.date);
             pagesFoundWithoutDownloadButtons = pagesFoundWithoutDownloadButtons.concat(pagesNoButtons);
-        });
-        await Promise.all(promises);
+        }
         
         log(`\n[${getCurrentTime()}]  All series processed.\n`);
 
