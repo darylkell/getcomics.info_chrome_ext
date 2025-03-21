@@ -4,16 +4,24 @@
   <meta charset="UTF-8">
   <title>getcomics.info downloader</title>
   <link rel="stylesheet" type="text/css" href="styles.css">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
 </head>
 <body>
   <h1>getcomics.info downloader</h1>
-  <div class="container" style="display: inline-block">
-    <input type="text" id="comic-series" placeholder="Add comic series">
-    <input type="text" id="comic-series-date" placeholder="YYYY-MM-DD" title="Date to search from">
-    <button id="add-series" disabled>Add</button>
-    <button id="get-recent" disabled>Get Recent</button>
-    <label for="verboseCheckbox">Verbose</label>
-    <input type="checkbox" id="verboseCheckbox" name="verboseCheckbox">
+  <div class="container" id="add-series-container">
+    <!-- Left-aligned group -->
+    <div id="left-group">
+        <input type="text" id="comic-series" placeholder="Add comic series">
+        <input type="text" id="comic-series-date" placeholder="YYYY-MM-DD" title="Date to search from">
+        <button id="add-series" disabled>Add</button>
+    </div>
+
+    <!-- Right-aligned group -->
+    <div id="right-group">
+        <label for="verboseCheckbox">Verbose</label>
+        <input type="checkbox" id="verboseCheckbox" name="verboseCheckbox">
+        <button id="get-recent" disabled>Get Recent</button>
+    </div>
   </div>
   
   <div class="container">
@@ -24,10 +32,11 @@
     </div>
   </div>
 
-  <div class="container">
+  <div class="container" id="textarea-container">
     <textarea id="output" readonly></textarea>
     <textarea id="verboseOutput" readonly></textarea>
   </div>
+  <button id="dark-mode-toggle">Toggle Dark Mode</button>
   <script src="popup.js"></script>
 </body>
 </html>

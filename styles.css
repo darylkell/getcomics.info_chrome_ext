@@ -1,106 +1,277 @@
+/* General Reset */
+body, h1, ul, li, input, button, textarea {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+/* Body Styling */
 body {
-  font-family: Arial, sans-serif;
-
-  padding: 10px;
+    font-family: 'Roboto', sans-serif;
+    background-color: #f4f4f9;
+    color: #333;
+    padding: 20px;
+    line-height: 1.6;
 }
 
+/* Dark Mode Styles */
+body.dark-mode {
+    background-color: #121212;
+    color: #ffffff; 
+}
+
+body.dark-mode input[type="text"] {
+    background-color: #1e1e1e;
+    color: #ffffff; 
+    border: 1px solid #333333; 
+}
+
+body.dark-mode button {
+    background-color: #333333; 
+    color: #ffffff; 
+}
+
+body.dark-mode button:disabled {
+    background-color: #555555; 
+}
+
+body.dark-mode .container {
+    background-color: #1e1e1e; 
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.5); 
+}
+
+body.dark-mode #get-recent {
+    background-color: #444444; 
+}
+
+body.dark-mode label {
+    color: #ffffff; 
+}
+
+body.dark-mode input[type="checkbox"] {
+    accent-color: #33CCCC; 
+}
+
+/* Header */
 h1 {
-  font-size: 1.5em;
+    font-size: 1.8rem;
+    color: #33CCCC;
+    text-align: center;
+    margin-bottom: 20px;
 }
 
-#add-series {
-  margin-top: 5px;
-  margin-right: 10px;
+/* Container Styling */
+.container {
+    background: #ffffff;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    padding: 20px;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px; 
+    flex-wrap: nowrap; 
+}
+
+/* Container for inputs and buttons */
+#add-series-container {
+    display: flex;
+    justify-content: space-between; 
+    align-items: center; 
+    gap: 10px; 
+    flex-wrap: nowrap; 
+    width: calc(100% - 40px); 
+}
+
+/* Left-aligned group (inputs and Add button) */
+#left-group {
+    display: flex;
+    align-items: center;
+    gap: 10px; 
+    flex-wrap: nowrap; 
+}
+
+/* Right-aligned group (Get Recent button and Verbose checkbox) */
+#right-group {
+    display: flex;
+    align-items: center; 
+    gap: 10px; 
+    flex-wrap: nowrap;
+}
+
+/* Input Fields */
+input[type="text"] {
+    padding: 10px;
+    margin-right: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 1rem;
+    flex: 1; 
+    min-width: 150px; 
 }
 
 #comic-series {
-  margin-right: 10px;
-  width: 300px;
+    width: 500px; 
 }
 
 #comic-series-date {
-  margin-right: 10px;
-  width: 100px;
+    flex: 0; 
+    width: 120px; 
+    text-align: center; 
 }
 
-.container {
-  display: flex;
-  align-items: center
+input[type="text"]:focus {
+    border-color: #33CCCC;
+    outline: none;
+    box-shadow: 0 0 5px rgba(0, 123, 255, 0.5);
 }
 
-#imageContainer {
-  display: flex;
-  flex-direction: column; /* Arrange items vertically */
-  align-items: center; /* Center items horizontally */
-  margin: auto; /* Push secondDiv to the right */
+/* Buttons */
+button {
+    background-color: #33CCCC;
+    color: white;
+    border: none;
+    padding: 10px 15px;
+    border-radius: 4px;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+    flex-shrink: 0; 
 }
 
-#imageContainer img {
-  display: block;
-  margin: 0 auto; /* Center the image horizontally */
-  max-width: 100%;
-  height: 400px;
+button:disabled {
+    background-color: #ccc;
+    cursor: not-allowed;
 }
 
-.container label,
-.container input[type="checkbox"] {
-  vertical-align: middle;
-}
 
-#downloadingTitle {
-  display: block;
-  text-align: center;
-  margin-top: 10px;
-}
-
+/* Checkbox */
 label {
-  margin-left: 10px;
+    font-size: 1rem;
+    margin-left: 10px;
+    cursor: pointer;
 }
 
-#output {
-  width: calc(50% - 10px);
-  height: 450px;
-  overflow-y: auto;
-  border: 1px solid #ccc;
-  padding: 10px;
-  margin-top: 10px;
-  resize: vertical;
+input[type="checkbox"] {
+    margin-left: 5px;
+    transform: scale(1.2);
+    cursor: pointer;
 }
 
+#verboseCheckbox {
+    transform: scale(1.2); 
+    margin-left: 5px;
+}
+
+label[for="verboseCheckbox"] {
+    margin-left: 5px;
+    white-space: nowrap; 
+}
+
+/* Series List */
 #series-list {
-  list-style-type: none;
-  margin: 0;
-  padding: 0;
-  margin-top: 10px;
+    list-style: none;
+    padding: 0;
 }
 
 #series-list li {
-  display: flex;
-  align-items: center;
-  margin-bottom: 5px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px;
+    border-bottom: 1px solid #ddd;
 }
 
-#series-list li button {
-  background: none;
-  border: none;
-  color: red;
-  font-size: 1.2em;
-  margin-right: 10px;
-  cursor: pointer;
+#series-list li:last-child {
+    border-bottom: none;
 }
 
-#series-list li span {
-  flex: 1;
+#series-list label {
+    flex: 1;
+    margin-left: 10px;
+    font-size: 0.8rem;
 }
 
-#verboseOutput {
-  display: none;
-  width: calc(50% - 10px);
-  height: 450px;
-  overflow-y: auto;
-  border: 1px solid #ccc;
-  padding: 10px;
-  margin-top: 10px;
-  margin-left: 30px;
-  resize: vertical;
+/* Remove Series Button */
+.remove-series {
+    background-color: transparent; 
+    border: none; 
+    cursor: pointer;
+    padding: 5px;
+    font-size: 1.2rem; 
+    color: #6c757d; 
+    transition: color 0.3s ease; 
+    margin: 0px 10px;
+}
+
+.remove-series:hover {
+    color: #33CCCC;
+}
+
+.remove-series i {
+    pointer-events: none; 
+}
+
+/* Image Container */
+#imageContainer {
+    text-align: center;
+    margin-top: 20px;
+}
+
+#imageContainer img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 8px;
+    margin-bottom: 10px;
+}
+
+#downloadingTitle {
+    font-size: 1.2rem;
+    color: #555;
+}
+
+/* Textareas */
+#textarea-container {
+    height: 600px;
+}
+
+textarea {
+    width: 100%;
+    height: 100%;
+    margin-top: 10px;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 1rem;
+    resize: none;
+    background-color: #f9f9f9;
+}
+
+textarea:focus {
+    border-color: #33CCCC;
+    outline: none;
+    box-shadow: 0 0 5px rgba(0, 123, 255, 0.5);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    input[type="text"] {
+        width: 100%;
+        margin-bottom: 10px;
+    }
+
+    button {
+        width: 100%;
+        margin-bottom: 10px;
+    }
+
+    #series-list li {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    #series-list label {
+        margin-left: 0;
+        margin-bottom: 10px;
+    }
 }

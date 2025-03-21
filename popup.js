@@ -23,7 +23,6 @@ document.addEventListener("DOMContentLoaded", function() {
 
     addSeriesButton.addEventListener("click", addSeries);
 
-
     seriesInput.addEventListener("keyup", function(event) {
         if (seriesInput.value.trim() == "") {
             addSeriesButton.disabled = true;
@@ -32,7 +31,6 @@ document.addEventListener("DOMContentLoaded", function() {
         else {
             addSeriesButton.disabled = false;
         }
-
 
         if (event.key === "Enter") {
             addSeries();
@@ -45,12 +43,28 @@ document.addEventListener("DOMContentLoaded", function() {
         }
     });
   
-    getRecentButton.addEventListener("click", downloadAllSelected);
+    getRecentButton.addEventListener("click", function () {
+        document.getElementById("textarea-container").scrollIntoView({ behavior: "smooth" });
+        setTimeout(() => {
+            downloadAllSelected();
+        }, 500); // Delay downloadAllSelected to ensure scroll happens first
+    });
 
     verboseCheckbox.addEventListener("click", function () {
         verboseOutput.style.display = verboseCheckbox.checked ? "block" : "none";
         chrome.storage.sync.set({ "getcomics_checkboxStatus": verboseCheckbox.checked });
     })
+
+    document.getElementById("dark-mode-toggle").addEventListener("click", function () {
+        document.body.classList.toggle("dark-mode");
+
+        const isDarkMode = document.body.classList.contains("dark-mode");
+        localStorage.setItem("darkMode", isDarkMode ? "enabled" : "disabled");
+    });
+
+    if (localStorage.getItem("darkMode") == "enabled") {
+        document.body.classList.add("dark-mode");
+    }
 });
 
 
@@ -133,6 +147,15 @@ async function downloadAllSelected() {
         chrome.storage.sync.get("comicSeries", async function(data) {
             displaySeries(data.comicSeries || []);
         });
+
+        // Uncheck the "Select All" checkbox
+        const selectAllCheckbox = document.getElementById("selectAllCheckbox");
+        if (selectAllCheckbox) {
+            selectAllCheckbox.checked = false;
+        }
+
+        // Disable the "Get Recent" button
+        getRecentButton.disabled = true;
     }); 
 }
 
@@ -221,7 +244,7 @@ function displaySeries(series) {
 
         const removeButton = document.createElement("button");
         removeButton.className = "remove-series";
-        removeButton.textContent = "x";
+        removeButton.innerHTML = `<i class="fas fa-trash"></i>`; // Use Font Awesome trash icon
         removeButton.addEventListener("click", () => {
             removeSeries(name);
             listItem.remove();
