@@ -1,21 +1,44 @@
+# getcomics.info Downloader
 
-# getcomics.info - chrome extension
-Sequentially download series from getcomics.info. This is not a release by getcomics.info.<br>
-Here's how you support getcomics.info: <a href="https://getcomics.org/support/" target="_blank">link</a>
-<br><br>
-Allows you to add comic series along with a date. When you 'get recent' it will search for comics released since the date and download them. To avoid over-burdening getcomics.info and maintain optimal speed on individual downloads, it sequentially downloads any matching comics that have a 'download now' button released on getcomics.info since the date.<br>
-Track the output via the output pane and searching/downloading status via browser tab title.
-<br><br>
-The date will be updated so that next time 'get recent' runs it will grab new comics since the date you last checked/downloaded.
-<br><br>
-Series and dates are synced to the Chrome profile.
+A Chrome extension for sequentially downloading comic series from `getcomics.info`.
 
-## Early release
-This release is a non-fuss and non-glossy interface which may not be updated in the future.
+> **Note**: This is an unofficial tool and is not affiliated with or released by `getcomics.info`. Please support the site directly at [getcomics.org/support](https://getcomics.org/support/).
+
+## Features
+
+- **Series Tracking**: Add and manage a list of your favorite comic series.
+- **Incremental Downloads**: Track the "last updated" date for each series to only download new releases.
+- **Sequential Downloading**: Downloads one comic at a time to minimize server load and ensure reliable completion.
+- **Real-time Status**: Monitor progress via the tab title and dedicated output panes.
+- **Dark Mode Support**: A clean, togglable dark interface for comfortable use.
+- **Sync Support**: Series data and settings are synced to your Chrome profile.
 
 ## Installation
-Download files and install in any Chromium-based browser via the developer mode 'Load Unpacked' method. Be aware that there are no safety rails here and while I'm telling you this codebase is clean (and unobfuscated/non-minified for transparency), you should still heed the security warning below.
 
-### Security Warning
-------
-Please properly vet anything you download from the internet, including this script. It could do anything.
+This extension is currently available for manual installation via "Load Unpacked" mode in Chromium-based browsers (Chrome, Edge, Brave, etc.).
+
+1. **Download the source code**: Clone this repository or download the ZIP file and extract it.
+2. **Open Extensions Page**: Navigate to `chrome://extensions/` in your browser.
+3. **Enable Developer Mode**: Toggle the switch in the top-right corner.
+4. **Load Unpacked**: Click the "Load unpacked" button and select the project root directory.
+
+## Usage
+
+1. **Open the interface**: Click the extension icon in your browser toolbar. It will open in a full browser tab for better visibility.
+2. **Add a Series**: 
+   - Enter the name of the series (e.g., "The Amazing Spider-Man").
+   - (Optional) Enter a starting date in `YYYY-MM-DD` format.
+   - Click **Add**.
+3. **Download New Issues**:
+   - Check the boxes for the series you want to update.
+   - Click **Get Recent**.
+   - The extension will search for any issues released after the "Last Updated" date and begin downloading them one by one.
+4. **Verbose Logging**: Toggle the "Verbose" checkbox to see detailed scraping and download logs.
+
+## Security Warning
+
+Please properly vet any scripts you download from the internet. While this codebase is clean and provided in an un-obfuscated format for transparency, you should always exercise caution when installing developer-mode extensions.
+
+## License
+
+This project is provided for educational and personal use. Please respect the terms of service of the source website.

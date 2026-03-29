@@ -1,38 +1,88 @@
-var seriesList = document.getElementById("series-list");
-var addSeriesButton = document.getElementById("add-series");
-var seriesInput = document.getElementById("comic-series");
-var dateInput = document.getElementById("comic-series-date");
-var getRecentButton = document.getElementById("get-recent");
-var output = document.getElementById("output");
-var verboseOutput = document.getElementById("verboseOutput");
-var verboseCheckbox = document.getElementById("verboseCheckbox");
+/**
+ * @file popup.js
+ * @description Core logic for the getcomics.info downloader interface.
+ */
 
-var title = "getcomics.info downloader";
+// DOM Elements
+const seriesList = document.getElementById("series-list");
+const addSeriesButton = document.getElementById("add-series");
+const seriesInput = document.getElementById("comic-series");
+const dateInput = document.getElementById("comic-series-date");
+const getRecentButton = document.getElementById("get-recent");
+const pauseResumeButton = document.getElementById("pause-resume");
+const cancelBatchButton = document.getElementById("cancel-batch");
+const terminal = document.getElementById("terminal");
+const verboseCheckbox = document.getElementById("verboseCheckbox");
+const selectAllCheckbox = document.getElementById("selectAllCheckbox");
+const progressSection = document.getElementById("progress-section");
+const progressBar = document.getElementById("progress-bar");
+const statusText = document.getElementById("status-text");
+const imageContainer = document.getElementById("imageContainer");
+const currentComicImg = document.getElementById("current-comic-img");
+const downloadingTitle = document.getElementById("downloadingTitle");
+const emptyState = document.getElementById("empty-state");
+const clearLogsButton = document.getElementById("clear-logs");
 
+// Data Management Elements
+const exportButton = document.getElementById("export-data");
+const importButton = document.getElementById("import-data");
+const importFileInput = document.getElementById("import-file-input");
 
+// File Progress Elements
+const fileProgressDetails = document.getElementById("file-progress-details");
+const currentFileName = document.getElementById("current-file-name");
+const currentFileSpeed = document.getElementById("current-file-speed");
+const fileProgressBar = document.getElementById("file-progress-bar");
+const currentFileSize = document.getElementById("current-file-size");
+const currentFilePercent = document.getElementById("current-file-percent");
+const skipFileButton = document.getElementById("skip-file");
+
+/** @type {string} Default document title */
+const defaultTitle = "getcomics.info downloader";
+
+// State Management
+let isProcessing = false;
+let isPaused = false;
+let isCancelled = false;
+let isSkipping = false;
+let currentDownloadId = null;
+
+/**
+ * Checks the current control state (Paused/Cancelled).
+ * Yields if paused, throws if cancelled.
+ */
+async function checkControlState() {
+    if (isCancelled) throw new Error("CANCELLED_BY_USER");
+    while (isPaused) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        if (isCancelled) throw new Error("CANCELLED_BY_USER");
+    }
+}
+
+/**
+ * Initialize the application on DOMContentLoaded.
+ */
 document.addEventListener("DOMContentLoaded", function() {
+    log("System initialized. Ready to download.", false, "info");
+
+    // Load saved comic series
     chrome.storage.sync.get("comicSeries", function(data) {
         displaySeries(data.comicSeries || []);
     });
 
+    // Load verbose logging preference
     chrome.storage.sync.get("getcomics_checkboxStatus", function(data) {
         if (data.getcomics_checkboxStatus) {
-            verboseCheckbox.click();
+            verboseCheckbox.checked = true;
         }
     });
 
     addSeriesButton.addEventListener("click", addSeries);
 
+    // Input validation for adding series
     seriesInput.addEventListener("keyup", function(event) {
-        if (seriesInput.value.trim() == "") {
-            addSeriesButton.disabled = true;
-            return;
-        }
-        else {
-            addSeriesButton.disabled = false;
-        }
-
-        if (event.key === "Enter") {
+        addSeriesButton.disabled = seriesInput.value.trim() === "";
+        if (event.key === "Enter" && !addSeriesButton.disabled) {
             addSeries();
         }
     });
@@ -43,530 +93,719 @@ document.addEventListener("DOMContentLoaded", function() {
         }
     });
   
+    // Trigger download process
     getRecentButton.addEventListener("click", function () {
-        document.getElementById("textarea-container").scrollIntoView({ behavior: "smooth" });
+        isProcessing = true;
+        isPaused = false;
+        isCancelled = false;
+        isSkipping = false;
+
+        getRecentButton.classList.add("hidden");
+        pauseResumeButton.classList.remove("hidden");
+        cancelBatchButton.classList.remove("hidden");
+        pauseResumeButton.innerHTML = '<i class="fas fa-pause"></i> Pause';
+        progressBar.classList.remove("paused");
+        
+        progressSection.classList.remove("hidden");
+        
+        // Scroll to the bottom of the container to see both progress and terminal
         setTimeout(() => {
-            downloadAllSelected();
-        }, 500); // Delay downloadAllSelected to ensure scroll happens first
+            terminal.scrollIntoView({ behavior: "smooth", block: "end" });
+        }, 100);
+
+        downloadAllSelected().catch(err => {
+            if (err.message === "CANCELLED_BY_USER") {
+                log("Batch cancelled by user.", false, "warning");
+                statusText.textContent = "Cancelled.";
+            } else {
+                log(`Unexpected error: ${err.message}`, false, "error");
+            }
+        }).finally(() => {
+            resetProcessUI();
+        });
     });
 
-    verboseCheckbox.addEventListener("click", function () {
-        verboseOutput.style.display = verboseCheckbox.checked ? "block" : "none";
+    pauseResumeButton.addEventListener("click", () => {
+        isPaused = !isPaused;
+        if (isPaused) {
+            pauseResumeButton.innerHTML = '<i class="fas fa-play"></i> Resume';
+            statusText.textContent = "Paused...";
+            progressBar.classList.add("paused");
+            log("Batch paused.", false, "warning");
+            if (currentDownloadId !== null) {
+                chrome.downloads.pause(currentDownloadId);
+            }
+        } else {
+            pauseResumeButton.innerHTML = '<i class="fas fa-pause"></i> Pause';
+            progressBar.classList.remove("paused");
+            log("Batch resumed.", false, "success");
+            if (currentDownloadId !== null) {
+                chrome.downloads.resume(currentDownloadId);
+            }
+        }
+    });
+
+    cancelBatchButton.addEventListener("click", () => {
+        if (confirm("Are you sure you want to cancel the current batch?")) {
+            isCancelled = true;
+            isPaused = false; // Unblock the yield loop if paused
+            if (currentDownloadId !== null) {
+                chrome.downloads.cancel(currentDownloadId);
+            }
+        }
+    });
+
+    skipFileButton.addEventListener("click", () => {
+        if (currentDownloadId !== null) {
+            isSkipping = true;
+            chrome.downloads.cancel(currentDownloadId);
+            log("Skipping current file...", false, "warning");
+        }
+    });
+
+    // Data Management
+    exportButton.addEventListener("click", exportSeries);
+    importButton.addEventListener("click", () => importFileInput.click());
+    importFileInput.addEventListener("change", (e) => {
+        if (e.target.files.length > 0) {
+            importSeries(e.target.files[0]);
+            e.target.value = ""; // Clear for next time
+        }
+    });
+
+    // Toggle verbose logging
+    verboseCheckbox.addEventListener("change", function () {
         chrome.storage.sync.set({ "getcomics_checkboxStatus": verboseCheckbox.checked });
-    })
+        log(`Verbose logging ${verboseCheckbox.checked ? "enabled" : "disabled"}.`, true);
+    });
 
-    document.getElementById("dark-mode-toggle").addEventListener("click", function () {
+    // Theme toggling
+    const darkModeToggle = document.getElementById("dark-mode-toggle");
+    darkModeToggle.addEventListener("click", function () {
         document.body.classList.toggle("dark-mode");
-
         const isDarkMode = document.body.classList.contains("dark-mode");
         localStorage.setItem("darkMode", isDarkMode ? "enabled" : "disabled");
+        darkModeToggle.innerHTML = isDarkMode ? '<i class="fas fa-sun"></i>' : '<i class="fas fa-moon"></i>';
     });
 
-    if (localStorage.getItem("darkMode") == "enabled") {
+    if (localStorage.getItem("darkMode") === "enabled") {
         document.body.classList.add("dark-mode");
+        darkModeToggle.innerHTML = '<i class="fas fa-sun"></i>';
     }
+
+    // Clear logs
+    clearLogsButton.addEventListener("click", () => {
+        terminal.innerHTML = `<div class="terminal-line"><span class="log-time">[${getCurrentTime()}]</span> Logs cleared.</div>`;
+    });
+
+    // Select All
+    selectAllCheckbox.addEventListener("change", function() {
+        const checkboxes = document.querySelectorAll(".series-checkbox");
+        checkboxes.forEach(cb => {
+            if (cb.id !== "selectAllCheckbox") cb.checked = this.checked;
+        });
+        updateGetRecentButtonState();
+    });
 });
 
+/**
+ * Resets the UI back to idle state after processing or cancelling.
+ */
+function resetProcessUI() {
+    isProcessing = false;
+    isPaused = false;
+    isCancelled = false;
+    isSkipping = false;
+    currentDownloadId = null;
+    
+    getRecentButton.classList.remove("hidden");
+    pauseResumeButton.classList.add("hidden");
+    cancelBatchButton.classList.add("hidden");
+    
+    selectAllCheckbox.checked = false;
+    updateGetRecentButtonState();
 
-function log(text, verbose, flush) {
-    const textArea = verbose == undefined ? output : verboseOutput;
-    if (flush) {
-        textArea.value = text;
-    }
-    else {
-        textArea.value += `\n${text}`;
-    }
-    textArea.scrollTop = textArea.scrollHeight;
+    document.title = defaultTitle;
+
+    setTimeout(() => {
+        if (!isProcessing) {
+            progressSection.classList.add("hidden");
+            imageContainer.classList.add("hidden");
+            fileProgressDetails.classList.add("hidden");
+            currentComicImg.src = "";
+            downloadingTitle.textContent = "";
+            progressBar.style.width = "0%";
+        }
+    }, 3000);
 }
 
+/**
+ * Logs messages to the terminal-style UI.
+ * @param {string} text - The message to log.
+ * @param {boolean} [isVerbose] - If true, only logs when verbose mode is active.
+ * @param {string} [type] - The type of log (info, success, error, warning).
+ */
+function log(text, isVerbose, type = "info") {
+    if (isVerbose && !verboseCheckbox.checked) return;
 
-// function downloadAllSelected() {
-//     chrome.storage.sync.get("comicSeries", async function(data) {
-//         var pagesFoundWithoutDownloadButtons = [];
-//         let series = data.comicSeries || [];
-        
-//         series = series.filter(
-//             s => document.querySelector(`input[value="${s.name}"]`).checked &&
-//             s.date < getCurrentDate()
-//         );
-//         log(`[${getCurrentTime()}]  Fetching new issues for ${series.length} series...\n`);
+    const line = document.createElement("div");
+    line.className = "terminal-line";
+    
+    const timeSpan = document.createElement("span");
+    timeSpan.className = "log-time";
+    timeSpan.textContent = `[${getCurrentTime()}]`;
+    
+    const contentSpan = document.createElement("span");
+    contentSpan.className = `log-${type}`;
+    contentSpan.textContent = ` ${text}`;
+    
+    line.appendChild(timeSpan);
+    line.appendChild(contentSpan);
+    terminal.appendChild(line);
+    terminal.scrollTop = terminal.scrollHeight;
+}
 
-//         let promises = series.map(async (s) => {
-//             // download one series at a time, track pages we will have to download manually
-//             let pagesNoButtons = await searchAndDownloadSeries(s.name, s.date);
-//             pagesFoundWithoutDownloadButtons = pagesFoundWithoutDownloadButtons.concat(pagesNoButtons);
-//         });
-//         await Promise.all(promises);
-        
-//         log(`\n[${getCurrentTime()}]  All series processed.\n`);
+/**
+ * Updates the state of the "Get Recent" button.
+ */
+function updateGetRecentButtonState() {
+    const anyChecked = [...document.querySelectorAll(".series-checkbox:not(#selectAllCheckbox)")].some(cb => cb.checked);
+    getRecentButton.disabled = !anyChecked;
+}
 
-//         if (pagesFoundWithoutDownloadButtons.length != 0) {
-//             log("\nDownload buttons could not be found on the following pages:");
-//             for (let page of pagesFoundWithoutDownloadButtons) {
-//                 log(` - ${page.title}`);
-//                 log(`   ${page.url}\n`)
-//             }
-//             log("\n")
-//         }
-
-//         chrome.storage.sync.get("comicSeries", async function(data) {
-//             displaySeries(data.comicSeries || []);
-//         });
-//     }); 
-// }
-
-
+/**
+ * Orchestrates the download of all selected series.
+ */
 async function downloadAllSelected() {
-    chrome.storage.sync.get("comicSeries", async function(data) {
-        var pagesFoundWithoutDownloadButtons = [];
-        let series = data.comicSeries || [];
-        
-        series = series.filter(
-            s => document.querySelector(`input[value="${s.name}"]`).checked &&
-            s.date < getCurrentDate()
-        );
-        log(`[${getCurrentTime()}]  Fetching new issues for ${series.length} series...\n`);
+    return new Promise(async (resolve, reject) => {
+        try {
+            const data = await chrome.storage.sync.get("comicSeries");
+            let series = data.comicSeries || [];
+            const selectedSeries = series.filter(s => {
+                const cb = document.querySelector(`.series-checkbox[value="${s.name}"]`);
+                return cb && cb.checked;
+            });
 
-        for (let s of series) {
-            // download one series at a time, track pages we will have to download manually
-            let pagesNoButtons = await searchAndDownloadSeries(s.name, s.date);
-            pagesFoundWithoutDownloadButtons = pagesFoundWithoutDownloadButtons.concat(pagesNoButtons);
-        }
-        
-        log(`\n[${getCurrentTime()}]  All series processed.\n`);
+            if (selectedSeries.length === 0) return resolve();
 
-        if (pagesFoundWithoutDownloadButtons.length != 0) {
-            log("\nDownload buttons could not be found on the following pages:");
-            for (let page of pagesFoundWithoutDownloadButtons) {
-                log(` - ${page.title}`);
-                log(`   ${page.url}\n`)
+            // Reset previous run states
+            document.querySelectorAll(".series-card").forEach(card => {
+                card.classList.remove("completed", "processing");
+                const badge = card.querySelector(".status-badge");
+                if (badge) badge.textContent = "Idle";
+            });
+
+            log(`Starting download for ${selectedSeries.length} series...`, false, "info");
+            progressBar.style.width = "0%";
+            
+            let processedCount = 0;
+            let pagesFoundWithoutDownloadButtons = [];
+
+            for (let s of selectedSeries) {
+                await checkControlState();
+
+                statusText.textContent = `Processing: ${s.name}...`;
+                imageContainer.classList.add("hidden");
+                fileProgressDetails.classList.add("hidden");
+                currentComicImg.src = "";
+                downloadingTitle.textContent = "";
+                
+                const card = document.querySelector(`.series-card[data-name="${s.name}"]`);
+                if (card) {
+                    card.classList.add("processing");
+                    card.classList.remove("completed");
+                }
+
+                try {
+                    let pagesNoButtons = await searchAndDownloadSeries(s.name, s.date);
+                    pagesFoundWithoutDownloadButtons = pagesFoundWithoutDownloadButtons.concat(pagesNoButtons);
+                    
+                    if (card) {
+                        card.classList.remove("processing");
+                        card.classList.add("completed");
+                        const badge = card.querySelector(".status-badge");
+                        if (badge) badge.textContent = "Done";
+                    }
+                } catch (error) {
+                    if (error.message === "CANCELLED_BY_USER") throw error; // bubble up
+                    log(`Error processing ${s.name}: ${error.message}`, false, "error");
+                    if (card) card.classList.remove("processing");
+                }
+                
+                processedCount++;
+                const percent = (processedCount / selectedSeries.length) * 100;
+                progressBar.style.width = `${percent}%`;
             }
-            log("\n")
+            
+            log("All selected series processed.", false, "success");
+            statusText.textContent = "Finished processing all series.";
+            
+            if (pagesFoundWithoutDownloadButtons.length > 0) {
+                log(`${pagesFoundWithoutDownloadButtons.length} issues skipped due to missing download buttons.`, false, "error");
+            }
+
+            chrome.storage.sync.get("comicSeries", function(data) {
+                displaySeries(data.comicSeries || []);
+            });
+
+            resolve();
+        } catch (error) {
+            reject(error);
         }
-
-        chrome.storage.sync.get("comicSeries", async function(data) {
-            displaySeries(data.comicSeries || []);
-        });
-
-        // Uncheck the "Select All" checkbox
-        const selectAllCheckbox = document.getElementById("selectAllCheckbox");
-        if (selectAllCheckbox) {
-            selectAllCheckbox.checked = false;
-        }
-
-        // Disable the "Get Recent" button
-        getRecentButton.disabled = true;
-    }); 
+    });
 }
 
-
+/**
+ * Adds a new series.
+ */
 function addSeries() {
-    /**
-     * Add new series to the DOM and chrome.storage.sync
-     **/ 
-    const seriesName = seriesInput.value.trim().replace(/"/g, "'");
-    const seriesDate = dateInput.value.trim() || getCurrentDate();
+    const name = seriesInput.value.trim().replace(/"/g, "'");
+    const date = dateInput.value.trim() || getCurrentDate();
 
-    if (!seriesName) {
-        return
-    }
+    if (!name) return;
 
     chrome.storage.sync.get("comicSeries", function(data) {
         const series = data.comicSeries || [];
+        const index = series.findIndex(s => s.name.toLowerCase() === name.toLowerCase());
 
-        var alreadyExists = series.some(obj => obj.name.toLowerCase() == seriesName.toLowerCase());
-
-        if (alreadyExists) {
-            for (let obj of series) {
-                if (obj.name.toLowerCase() == seriesName.toLowerCase()) {
-                    obj.date = seriesDate;
-                    break
-                }
-            }
-        }
-        else {
-            series.push({ name: seriesName, date: seriesDate });
+        if (index !== -1) {
+            series[index].date = date;
+            log(`Updated date for ${name} to ${date}.`);
+        } else {
+            series.push({ name, date });
+            log(`Added series: ${name}.`, false, "success");
         }
 
-        chrome.storage.sync.set(
-            {comicSeries: series}, 
-            function() {
-                displaySeries(series);
-                seriesInput.value = "";
-                dateInput.value = "";
-            }
-        );
+        chrome.storage.sync.set({ comicSeries: series }, () => {
+            displaySeries(series);
+            seriesInput.value = "";
+            dateInput.value = "";
+            addSeriesButton.disabled = true;
+        });
     });
 }
 
-
+/**
+ * Renders the series grid.
+ */
 function displaySeries(series) {
     seriesList.innerHTML = "";
+    
+    if (series.length === 0) {
+        emptyState.classList.remove("hidden");
+        return;
+    }
+    emptyState.classList.add("hidden");
 
-    // Add 'Select All' checkbox
-    const selectAllCheckbox = document.createElement("input");
-    selectAllCheckbox.type = "checkbox";
-    selectAllCheckbox.id = "selectAllCheckbox";
-    selectAllCheckbox.addEventListener("change", function() {
-        const checkboxes = document.querySelectorAll(".series-checkbox");
-        checkboxes.forEach(checkbox => {
-            checkbox.checked = this.checked;
-        });
-
-        getRecentButton.disabled = ![...document.querySelectorAll(".series-checkbox")].some(
-            checkbox => checkbox.checked
-        )
-    });
-
-    const selectAllLabel = document.createElement("label");
-    selectAllLabel.htmlFor = "selectAllCheckbox";
-    selectAllLabel.textContent = "Select All";
-
-    const selectAllListItem = document.createElement("li");
-    selectAllListItem.appendChild(selectAllCheckbox);
-    selectAllListItem.appendChild(selectAllLabel);
-    seriesList.appendChild(selectAllListItem);
-
-    // Add series with checkboxes and remove button
     for (let { name, date } of sorted(series)) {
-        const listItem = document.createElement("li");
+        const card = document.createElement("li");
+        card.className = "series-card";
+        card.dataset.name = name;
 
-        const seriesCheckbox = document.createElement("input");
-        seriesCheckbox.type = "checkbox";
-        seriesCheckbox.className = "series-checkbox";
-        seriesCheckbox.value = name;
-        seriesCheckbox.id = `checkbox-${name}`;
-        seriesCheckbox.addEventListener("click", () => {
-            getRecentButton.disabled = ![...document.querySelectorAll(".series-checkbox")].some(
-                checkbox => checkbox.checked
-            )
+        card.innerHTML = `
+            <div class="card-header">
+                <div class="series-info">
+                    <span class="series-name">${name}</span>
+                    <div class="series-date">
+                        <i class="far fa-calendar-alt"></i> 
+                        <span class="editable-date" title="Click to edit date">${date}</span>
+                    </div>
+                </div>
+                <input type="checkbox" class="series-checkbox" value="${name}">
+            </div>
+            <div class="card-actions">
+                <button class="btn btn-outline btn-icon remove-btn" title="Remove Series">
+                    <i class="fas fa-trash-alt" style="color: var(--danger);"></i>
+                </button>
+                <span class="status-badge status-idle">Idle</span>
+            </div>
+        `;
+
+        card.querySelector(".series-checkbox").addEventListener("change", updateGetRecentButtonState);
+
+        card.querySelector(".remove-btn").addEventListener("click", () => {
+            if (confirm(`Remove "${name}" from your list?`)) {
+                removeSeries(name);
+            }
         });
 
-        const removeButton = document.createElement("button");
-        removeButton.className = "remove-series";
-        removeButton.innerHTML = `<i class="fas fa-trash"></i>`; // Use Font Awesome trash icon
-        removeButton.addEventListener("click", () => {
-            removeSeries(name);
-            listItem.remove();
+        card.querySelector(".editable-date").addEventListener("click", function() {
+            const newDate = prompt(`Update last-checked date for "${name}":`, date);
+            if (newDate && /^\d{4}-\d{2}-\d{2}$/.test(newDate)) {
+                updateSeriesDate(name, newDate);
+            } else if (newDate) {
+                alert("Invalid date format. Please use YYYY-MM-DD.");
+            }
         });
 
-        const seriesLabel = document.createElement("label");
-        seriesLabel.htmlFor = `checkbox-${name}`;
-        seriesLabel.textContent = `${name} (Last Updated: ${date})`;
-
-        listItem.appendChild(seriesCheckbox);
-        listItem.appendChild(removeButton);
-        listItem.appendChild(seriesLabel);
-
-        seriesList.appendChild(listItem);
+        seriesList.appendChild(card);
     }
 }
 
-
-function addSeriesToList(seriesName) {
-    /**
-     * Adds series to the DOM
-     **/
-    const li = document.createElement("li");
-
-    const removeButton = document.createElement("button");
-    removeButton.textContent = "x";
-    removeButton.addEventListener("click", function() {
-        removeSeries(seriesName);
+function updateSeriesDate(name, newDate) {
+    chrome.storage.sync.get("comicSeries", (data) => {
+        const series = data.comicSeries || [];
+        const s = series.find(obj => obj.name === name);
+        if (s) {
+            s.date = newDate;
+            chrome.storage.sync.set({ comicSeries: series }, () => {
+                displaySeries(series);
+                log(`Updated date for ${name} to ${newDate}.`);
+            });
+        }
     });
-
-    const seriesSpan = document.createElement("span");
-    seriesSpan.textContent = seriesName;
-
-    li.appendChild(removeButton);
-    li.appendChild(seriesSpan);
-    seriesList.appendChild(li);
 }
 
-
-function removeSeries(seriesName) {
-    /**
-     * Removes a series from chrome.storage and re-writes the list of 
-     * series in the DOM to match the new list
-     * 
-     **/
+function removeSeries(name) {
     chrome.storage.sync.get("comicSeries", function(data) {
-        let series = data.comicSeries || [];
-        const updatedSeries = series.filter(s => s.name !== seriesName);
-        chrome.storage.sync.set(
-            {comicSeries: updatedSeries},
-            function() {
-                displaySeries(updatedSeries);
-            }
-        )
+        const updated = (data.comicSeries || []).filter(s => s.name !== name);
+        chrome.storage.sync.set({ comicSeries: updated }, () => {
+            displaySeries(updated);
+            log(`Removed ${name}.`, false, "info");
+        });
     });
 }
 
+/**
+ * Helper to fetch a resource with a timeout.
+ */
+async function fetchWithTimeout(url, options = {}, timeout = 15000) {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeout);
+    try {
+        const response = await fetch(url, {
+            ...options,
+            signal: controller.signal
+        });
+        clearTimeout(id);
+        return response;
+    } catch (error) {
+        clearTimeout(id);
+        throw error;
+    }
+}
 
+/**
+ * Retries an async function a specified number of times.
+ */
+async function withRetry(fn, retries = 3, delay = 2000) {
+    try {
+        return await fn();
+    } catch (error) {
+        if (retries <= 0) throw error;
+        await new Promise(resolve => setTimeout(resolve, delay));
+        return withRetry(fn, retries - 1, delay * 1.5);
+    }
+}
+
+/**
+ * Scrapes and downloads a single series.
+ */
 async function searchAndDownloadSeries(seriesName, date) {
-    /**
-     * Fetch comics for the series, then parse the comic pages for 
-     * downloadable comic links and download them one at a time.
-     **/
     const parser = new DOMParser();
-    const title = document.querySelector("title").innerText;
-    document.querySelector("title").innerText = `[Searching] ${title}`;
+    const card = document.querySelector(`.series-card[data-name="${seriesName}"]`);
+    const badge = card ? card.querySelector(".status-badge") : null;
+    
+    if (badge) {
+        badge.textContent = "Searching";
+        badge.className = "status-badge status-active";
+    }
+
+    document.title = `[Searching] ${seriesName}`;
     
     let pagesFoundWithoutDownloadButtons = [];
     let comicLinks = [];
     let page = 0;
 
     while (true) {
+        await checkControlState();
+
         page++;
         const searchUrl = `https://getcomics.info/page/${page}?s=${encodeURIComponent(seriesName).replace(/%20/g, "+")}`;
+        
+        try {
+            const response = await withRetry(() => fetchWithTimeout(searchUrl));
+            if (response.status === 404) break;
 
-        const response = await fetch(searchUrl);
-
-        // found the limit of results
-        if (response.status == 404) {
-            break;
+            const html = await response.text();
+            const newLinks = getComicDetails(parser.parseFromString(html, "text/html"), date);
+            if (newLinks.length === 0) break;
+            comicLinks = comicLinks.concat(newLinks);
+        } catch (error) {
+            if (error.message === "CANCELLED_BY_USER") throw error;
+            log(`Network error searching ${seriesName} (Page ${page}): ${error.message}`, false, "error");
+            break; 
         }
-
-        const html = await response.text();
-        const newLinks = getComicDetails(parser.parseFromString(html, "text/html"), date);
-
-        // haven't found any more links (possibly due to date)
-        if (newLinks.length == 0) {
-            break;
-        }
-
-        comicLinks = comicLinks.concat(newLinks);
     }
 
-    if (comicLinks.length) {
-        log(`                 --- ${seriesName} ---`, "verbose");
-    }
+    log(`${seriesName}: Found ${comicLinks.length} new issues.`, false, comicLinks.length > 0 ? "success" : "info");
 
-    const downloadingText = comicLinks.length === 1 ?  
-        "comic found. Downloading..." :
-        comicLinks.length > 1 ? 
-            "comics found. Downloading..." :
-            "comics found.";
-    log(`${seriesName}:  ${comicLinks.length} ${downloadingText}`);
-
-
-    const totalLength = comicLinks.length.toString().length;
     for (let i = 0; i < comicLinks.length; i++) {
-        const comicLink = comicLinks[i];
-        const paddedIndex = (i + 1).toString().padStart(totalLength, "0");
-        document.querySelector("title").innerText = `[Downloading ${paddedIndex}/${comicLinks.length}] ${title}`;
+        await checkControlState();
 
-        const response = await fetch(comicLink.url);
-        const data = await response.text();
-        const html = parser.parseFromString(data, "text/html");
-        const downloadLinks1 = html.querySelectorAll("a[title='DOWNLOAD NOW' i]");
-        const downloadLinks2 = [...html.querySelectorAll("a")].filter(a => a.innerText.trim().toLowerCase() === "main server");
-        const downloadLinks = [...downloadLinks1, ...downloadLinks2];
+        if (badge) badge.textContent = `Downloading ${i+1}/${comicLinks.length}`;
+        const comicLink = comicLinks[i];
+        document.title = `[Downloading ${i+1}/${comicLinks.length}] ${seriesName}`;
+
+        let downloadLinks = [];
+        try {
+            const response = await withRetry(() => fetchWithTimeout(comicLink.url));
+            const data = await response.text();
+            const html = parser.parseFromString(data, "text/html");
+            
+            const downloadLinksRaw = [
+                ...html.querySelectorAll("a[title*='DOWNLOAD' i]"),
+                ...[...html.querySelectorAll("a")].filter(a => {
+                    const text = a.innerText.trim().toLowerCase();
+                    return text.includes("main server") || text.includes("download now") || text.includes("direct download");
+                })
+            ];
+            
+            // Deduplicate links based on href
+            downloadLinks = [...new Set(downloadLinksRaw.map(a => a.href))].map(href => downloadLinksRaw.find(a => a.href === href));
+        } catch (error) {
+            if (error.message === "CANCELLED_BY_USER") throw error;
+            log(`Network error fetching details for ${comicLink.title}: ${error.message}`, false, "error");
+            continue;
+        }
 
         if (downloadLinks.length === 0) {
-            log(` 🔗 ${comicLink.url}\n    ❌ Download buttons found:  0\n`, "verbose");
+            log(`Skipped: ${comicLink.title} (No download link found)`, true, "error");
             pagesFoundWithoutDownloadButtons.push(comicLink);
             continue;
         }
-        
-        log(` 🔗 ${comicLink.url}\n    ✅ Download buttons found:  ${downloadLinks.length}\n`, "verbose");
 
-        document.querySelector("img").src = comicLink.image;
-        document.querySelector("#downloadingTitle").innerText = `Downloading '${comicLink.title}'`;
+        imageContainer.classList.remove("hidden");
+        fileProgressDetails.classList.remove("hidden");
+        currentComicImg.src = comicLink.image;
+        downloadingTitle.textContent = `Downloading: ${comicLink.title}`;
 
-        const downloadNumTotalLength = downloadLinks.length.toString().length;
         for (let j = 0; j < downloadLinks.length; j++) {
+            await checkControlState();
+            isSkipping = false; // Reset skip flag for each part
+            
             const link = downloadLinks[j];
-            const downloadNum = (j + 1).toString().padStart(downloadNumTotalLength, '0');
-            log(`    [${getCurrentTime()}] ↓ Downloading ${downloadNum}/${downloadLinks.length}\n    ${link.href}\n`, "verbose");
-
+            log(`Downloading issue ${i+1}/${comicLinks.length} part ${j+1}/${downloadLinks.length}`, true);
             try {
-                await downloadFile(link.href);
-            } catch (error) {
-                if (error.message === "Download removed") {
-                    log(`Download of '${comicLink.title}' was removed by the user. Continuing downloads...`);
-                } else if (error.message === "Download paused") {
-                    log(`Download of '${comicLink.title}' was paused by the user. Continuing downloads...`);
+                const result = await downloadFile(link.href);
+                if (result === "SKIPPED") {
+                    log(`Skipped part ${j+1} of '${comicLink.title}'`, false, "warning");
+                    continue; // Move to next part
                 }
+            } catch (error) {
+                if (error.message === "CANCELLED_BY_USER") throw error;
+                log(`Failed to download '${comicLink.title}': ${error.message}`, false, "error");
+                
+                // Provide manual download link
+                const manualLine = document.createElement("div");
+                manualLine.className = "terminal-line";
+                manualLine.innerHTML = `<span class="log-time">[${getCurrentTime()}]</span> <span class="log-error"> ➜ Manual Download: <a href="${comicLink.url}" target="_blank" style="color: var(--primary); text-decoration: underline;">${comicLink.url}</a></span>`;
+                terminal.appendChild(manualLine);
+                terminal.scrollTop = terminal.scrollHeight;
             }
         }
-
-        document.querySelector("img").src = "";
-        document.querySelector("#downloadingTitle").innerText = "";
     }
-    document.querySelector("title").innerText = title;
 
-    // all downloaded, update "last updated" and refresh the list to show it
-    await new Promise((resolve, reject) => {
-        chrome.storage.sync.get("comicSeries", function(data) {
+    if (badge) {
+        badge.textContent = "Idle";
+        badge.className = "status-badge status-idle";
+    }
+
+    // Update series date to today after successful processing
+    await new Promise(resolve => {
+        chrome.storage.sync.get("comicSeries", (data) => {
             const series = data.comicSeries || [];
-
-            try {
-                for (let obj of series) {
-                    if (obj.name.toLowerCase() === seriesName.toLowerCase()) {
-                        obj.date = getCurrentDate();
-                        break;
-                    }
-                }
-            } catch (err) {
-                return reject(err);
-            }
-
-            chrome.storage.sync.set({ comicSeries: series }, function() {
-                resolve();
-            });
+            const s = series.find(obj => obj.name.toLowerCase() === seriesName.toLowerCase());
+            if (s) s.date = getCurrentDate();
+            chrome.storage.sync.set({ comicSeries: series }, resolve);
         });
     });
 
     return pagesFoundWithoutDownloadButtons;
 }
 
-
 function getComicDetails(html, date) {
-    /**
-     * Parses the comics for a series, returning attributes needed 
-     * to find the comic links
-     **/
-    if (date != undefined) {
-        date = parseDate(date);
-    }
+    const filterDate = date ? parseDate(date) : null;
+    const articles = html.querySelectorAll("article");
+    const pages = [];
 
-    var articles = html.querySelectorAll("article");
+    for (const article of articles) {
+        // More robust title selector: check for h1, h2, h3, or a generic .post-title class
+        const titleTag = article.querySelector("h1.post-title, h1, h2.post-title, h2, h3, .post-title");
+        const timeTag = article.querySelector("time");
+        
+        if (titleTag && timeTag) {
+            const comicDate = new Date(timeTag.dateTime || timeTag.getAttribute('datetime'));
+            const linkTag = titleTag.tagName.toLowerCase() === 'a' ? titleTag : titleTag.querySelector("a");
 
-    if (articles.length == 0) {
-        return []
-    }
-
-    var pages = [];
-    for (var article of articles) {
-        let title_tag = article.querySelector("h1.post-title");
-        let comicDate = new Date(article.querySelector("time").dateTime);
-
-        if (date == undefined || comicDate > date) {
-            pages.push({
-                title: title_tag.innerText,
-                url: title_tag.querySelector("a").href,
-                time: comicDate,
-                image: article.querySelector("img").src
-            })
+            if (!filterDate || comicDate > filterDate) {
+                if (linkTag) {
+                    const imgTag = article.querySelector("img");
+                    pages.push({
+                        title: titleTag.innerText.trim(),
+                        url: linkTag.href,
+                        time: comicDate,
+                        image: imgTag ? imgTag.src : ""
+                    });
+                }
+            }
         }
     }
- 
-    return pages
+    return pages;
 }
 
+/**
+ * Formats bytes into a human-readable string.
+ */
+function formatBytes(bytes, decimals = 2) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const dm = decimals < 0 ? 0 : decimals;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+}
 
+/**
+ * Chrome Downloads API wrapper with Pause/Cancel/Skip support and progress tracking.
+ */
 function downloadFile(url) {
-    /**
-     * Downloads a file but only proceeds when the file has finished 
-     * getcomics.info is too slow to try multiple downloads...
-     **/
     return new Promise((resolve, reject) => {
         chrome.downloads.download({ url: url }, (downloadId) => {
-            if (chrome.runtime.lastError) {
-                console.log(chrome.runtime.lastError);
-                reject(chrome.runtime.lastError);
-            } 
+            if (chrome.runtime.lastError) return reject(chrome.runtime.lastError);
 
-            chrome.downloads.onChanged.addListener(function onChanged(downloadDelta) {
-                if (
-                    downloadDelta.id === downloadId && 
-                    downloadDelta.state && 
-                    downloadDelta.state.current === "complete"
-                    ) {
-                    chrome.downloads.onChanged.removeListener(onChanged);
-                    resolve();
+            currentDownloadId = downloadId;
+            let lastBytesReceived = 0;
+            let lastCheckTime = Date.now();
+
+            const monitorInterval = setInterval(() => {
+                chrome.downloads.search({ id: downloadId }, (items) => {
+                    if (items && items[0]) {
+                        const item = items[0];
+                        const now = Date.now();
+                        const duration = (now - lastCheckTime) / 1000;
+                        const bytesReceived = item.bytesReceived;
+                        const totalBytes = item.totalBytes;
+                        
+                        // Calculate Speed
+                        if (duration > 0) {
+                            const speed = (bytesReceived - lastBytesReceived) / duration;
+                            currentFileSpeed.textContent = `${formatBytes(speed)}/s`;
+                        }
+
+                        // Update Progress Bar & Text
+                        if (totalBytes > 0) {
+                            const percent = (bytesReceived / totalBytes) * 100;
+                            fileProgressBar.style.width = `${percent}%`;
+                            currentFilePercent.textContent = `${Math.round(percent)}%`;
+                            currentFileSize.textContent = `${formatBytes(bytesReceived)} / ${formatBytes(totalBytes)}`;
+                        } else {
+                            currentFileSize.textContent = `${formatBytes(bytesReceived)} / Unknown`;
+                        }
+
+                        currentFileName.textContent = item.filename ? item.filename.split(/[\\/]/).pop() : "Starting...";
+
+                        lastBytesReceived = bytesReceived;
+                        lastCheckTime = now;
+                    }
+                });
+            }, 1000);
+
+            const onChanged = (delta) => {
+                if (delta.id === downloadId) {
+                    if (delta.state?.current === "complete") {
+                        clearInterval(monitorInterval);
+                        chrome.downloads.onChanged.removeListener(onChanged);
+                        currentDownloadId = null;
+                        resolve("COMPLETE");
+                    } else if (delta.state?.current === "interrupted") {
+                        clearInterval(monitorInterval);
+                        chrome.downloads.onChanged.removeListener(onChanged);
+                        currentDownloadId = null;
+                        if (isCancelled) {
+                            resolve("CANCELLED"); 
+                        } else if (isSkipping) {
+                            isSkipping = false;
+                            resolve("SKIPPED");
+                        } else {
+                            reject(new Error("Download interrupted"));
+                        }
+                    }
                 }
-                else if (
-                    downloadDelta.id === downloadId && 
-                    downloadDelta.paused?.current
-                    ) {
-                    chrome.downloads.onChanged.removeListener(onChanged);
-                    reject(new Error("Download paused"));
-                }
-                else if (
-                    downloadDelta.id === downloadId && 
-                    downloadDelta.state && 
-                    downloadDelta.state.current === "interrupted"
-                    ) {
-                    // if download is removed by user
-                    chrome.downloads.onChanged.removeListener(onChanged);
-                    reject(new Error("Download removed"));
-                }
-                else if (downloadDelta.id === downloadId) {
-                    console.log(`[${getCurrentTime()}]  Unknown download state change:`)
-                    console.log(downloadDelta);
-                }
-            });
+            };
+            chrome.downloads.onChanged.addListener(onChanged);
         });
     });
 }
 
+/**
+ * Exports current comic series to a JSON file.
+ */
+async function exportSeries() {
+    try {
+        const data = await chrome.storage.sync.get("comicSeries");
+        const series = data.comicSeries || [];
+        const blob = new Blob([JSON.stringify(series, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const timestamp = new Date().toISOString().split('T')[0];
+        
+        chrome.downloads.download({
+            url: url,
+            filename: `getcomics-series-${timestamp}.json`,
+            saveAs: true
+        });
+        
+        log(`Exported ${series.length} series.`, false, "success");
+    } catch (err) {
+        log(`Export failed: ${err.message}`, false, "error");
+    }
+}
+
+/**
+ * Imports comic series from a JSON file.
+ * @param {File} file 
+ */
+function importSeries(file) {
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+        try {
+            const series = JSON.parse(e.target.result);
+            if (!Array.isArray(series)) throw new Error("File format is not an array.");
+            
+            // Basic structural validation
+            if (series.length > 0 && (!series[0].name || !series[0].date)) {
+                throw new Error("Invalid series data structure. Expected {name, date}.");
+            }
+            
+            if (confirm(`Import ${series.length} series? This will REPLACE your current list.`)) {
+                await chrome.storage.sync.set({ comicSeries: series });
+                displaySeries(series);
+                log(`Successfully imported ${series.length} series.`, false, "success");
+            }
+        } catch (err) {
+            log(`Import failed: ${err.message}`, false, "error");
+            alert(`Import failed: ${err.message}`);
+        }
+    };
+    reader.onerror = () => log("Error reading file.", false, "error");
+    reader.readAsText(file);
+}
 
 function parseDate(dateString) {
-    // Split the string into an array of [year, month, day]
-    const parts = dateString.split("-");
-    
-    // Note: JavaScript months are 0-based, so subtract 1 from the month
-    const year = parseInt(parts[0], 10);
-    const month = parseInt(parts[1], 10) - 1;
-    const day = parseInt(parts[2], 10);
-    
-    // Create and return the Date object
-    return new Date(year, month, day);
+    const [y, m, d] = dateString.split("-").map(n => parseInt(n, 10));
+    return new Date(y, m - 1, d);
 }
-
 
 function sorted(list) {
-    /**
-     * Sorts a list alphabetically, ignoring case
-     */
-    let sortedList = [...list].sort((a, b) => {
-        if (a.name.toLowerCase() < b.name.toLowerCase()) {
-            return -1;
-        }
-        if (a.name.toLowerCase() > b.name.toLowerCase()) {
-            return 1;
-        }
-        return 0;
-    });
-    return sortedList
+    return [...list].sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
 }
-
 
 function getCurrentDate() {
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = String(today.getMonth() + 1).padStart(2, "0"); // Months are zero-based
-    const day = String(today.getDate()).padStart(2, "0");
-    
-    return `${year}-${month}-${day}`;
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 }
-
 
 function getCurrentTime() {
     const now = new Date();
-    let hours = now.getHours().toString().padStart(2, "0"); // Ensure 2 digits
-    let minutes = now.getMinutes().toString().padStart(2, "0"); // Ensure 2 digits
-    let seconds = now.getSeconds().toString().padStart(2, "0"); // Ensure 2 digits
-
-    return `${hours}:${minutes}:${seconds}`;
+    return now.toTimeString().split(" ")[0];
 }
-
-
-
-
-// chrome.storage.sync.get('comicSeries', function(data) {
-//     let comicsList = data.comicSeries || [];
-    
-//     // Update the date for each item in the list
-//     let updatedComicsList = comicsList.map(comic => {
-//         comic.date = "2024-06-14";
-//         return comic;
-//     });
-
-//     // Save the updated list back to chrome.storage.sync
-//     chrome.storage.sync.set({ 'comicSeries': updatedComicsList }, function() {
-//         console.log('Data updated successfully!');
-//     });
-// });

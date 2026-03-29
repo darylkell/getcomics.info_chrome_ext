@@ -1,42 +1,132 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>getcomics.info downloader</title>
-  <link rel="stylesheet" type="text/css" href="styles.css">
+  <link rel="stylesheet" href="styles.css">
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Fira+Code&display=swap" rel="stylesheet">
 </head>
 <body>
-  <h1>getcomics.info downloader</h1>
-  <div class="container" id="add-series-container">
-    <!-- Left-aligned group -->
-    <div id="left-group">
-        <input type="text" id="comic-series" placeholder="Add comic series">
-        <input type="text" id="comic-series-date" placeholder="YYYY-MM-DD" title="Date to search from">
-        <button id="add-series" disabled>Add</button>
-    </div>
+  <header class="header-bar">
+    <h1><i class="fas fa-book-open"></i> getcomics.info</h1>
+    
+    <div class="controls-group">
+      <div class="controls-group" title="Toggle Verbose Logging">
+        <label for="verboseCheckbox" style="font-size: 0.8rem; font-weight: 600;">VERBOSE</label>
+        <label class="switch">
+          <input type="checkbox" id="verboseCheckbox">
+          <span class="slider"></span>
+        </label>
+      </div>
 
-    <!-- Right-aligned group -->
-    <div id="right-group">
-        <label for="verboseCheckbox">Verbose</label>
-        <input type="checkbox" id="verboseCheckbox" name="verboseCheckbox">
-        <button id="get-recent" disabled>Get Recent</button>
+      <button id="export-data" class="btn btn-outline btn-icon" title="Export Series (JSON)">
+        <i class="fas fa-file-export"></i>
+      </button>
+      
+      <button id="import-data" class="btn btn-outline btn-icon" title="Import Series (JSON)">
+        <i class="fas fa-file-import"></i>
+      </button>
+      <input type="file" id="import-file-input" class="hidden" accept=".json">
+      
+      <button id="dark-mode-toggle" class="btn btn-outline btn-icon" title="Toggle Dark Mode">
+        <i class="fas fa-moon"></i>
+      </button>
     </div>
-  </div>
-  
-  <div class="container">
-    <ul id="series-list"></ul>
-    <div id="imageContainer">
-      <img>
-      <span id="downloadingTitle"></span>
-    </div>
-  </div>
+  </header>
 
-  <div class="container" id="textarea-container">
-    <textarea id="output" readonly></textarea>
-    <textarea id="verboseOutput" readonly></textarea>
-  </div>
-  <button id="dark-mode-toggle">Toggle Dark Mode</button>
+  <main class="app-wrapper">
+    <!-- Add Series Section -->
+    <section class="section">
+      <div class="add-series-form">
+        <input type="text" id="comic-series" class="input-field" placeholder="Series name (e.g. The Amazing Spider-Man)">
+        <input type="text" id="comic-series-date" class="input-field input-date" placeholder="YYYY-MM-DD">
+        <button id="add-series" class="btn btn-primary" disabled>
+          <i class="fas fa-plus"></i> Add
+        </button>
+      </div>
+    </section>
+
+    <!-- Series List Section -->
+    <section class="section">
+      <div class="header-bar" style="padding: 0 0 16px 0; background: transparent; border: none; box-shadow: none; position: static;">
+        <div class="controls-group">
+          <input type="checkbox" id="selectAllCheckbox" class="series-checkbox">
+          <label for="selectAllCheckbox" style="font-weight: 600; cursor: pointer;">Select All</label>
+        </div>
+        <div class="controls-group">
+          <button id="cancel-batch" class="btn btn-outline hidden" style="color: var(--danger); border-color: var(--danger);">
+            <i class="fas fa-times"></i> Cancel
+          </button>
+          <button id="pause-resume" class="btn btn-secondary hidden">
+            <i class="fas fa-pause"></i> Pause
+          </button>
+          <button id="get-recent" class="btn btn-primary" disabled>
+            <i class="fas fa-download"></i> Get Recent
+          </button>
+        </div>
+      </div>
+
+      <div id="empty-state" class="empty-state hidden">
+        <i class="fas fa-folder-open"></i>
+        <p>No comic series added yet.</p>
+        <p style="font-size: 0.8rem;">Add your first series above to get started.</p>
+      </div>
+
+      <ul id="series-list" class="series-grid">
+        <!-- Series cards will be injected here -->
+      </ul>
+    </section>
+
+    <!-- Download Progress Section -->
+    <section id="progress-section" class="section hidden">
+      <div id="imageContainer" class="hidden" style="text-align: center; margin-bottom: 16px;">
+        <img id="current-comic-img" src="" alt="Comic Cover" style="max-height: 200px; border-radius: 8px; box-shadow: var(--shadow);">
+        <p id="downloadingTitle" style="font-weight: 600; margin-top: 8px;"></p>
+      </div>
+      
+      <div id="file-progress-details" class="hidden" style="margin-bottom: 12px; font-size: 0.85rem;">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 4px; align-items: center;">
+            <span id="current-file-name" style="font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60%;"></span>
+            <div class="controls-group">
+                <span id="current-file-speed" style="color: var(--primary); font-weight: 700; margin-right: 8px;"></span>
+                <button id="skip-file" class="btn btn-outline" style="padding: 2px 8px; font-size: 0.7rem; border-color: var(--warning); color: var(--warning);">
+                    <i class="fas fa-forward"></i> Skip
+                </button>
+            </div>
+        </div>
+        <div class="progress-container" style="display: block; height: 6px; margin-bottom: 4px;">
+            <div id="file-progress-bar" class="progress-bar" style="background: var(--secondary);"></div>
+        </div>
+        <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-muted);">
+            <span id="current-file-size"></span>
+            <span id="current-file-percent">0%</span>
+        </div>
+      </div>
+
+      <div style="margin-top: 16px; border-top: 1px solid var(--border-color); padding-top: 12px;">
+        <p style="font-size: 0.7rem; text-transform: uppercase; font-weight: 700; color: var(--text-muted); margin-bottom: 8px;">Batch Progress</p>
+        <div class="progress-container" style="display: block;">
+          <div id="progress-bar" class="progress-bar"></div>
+        </div>
+        <p id="status-text" style="font-size: 0.8rem; text-align: center; color: var(--text-muted); margin-top: 4px;"></p>
+      </div>
+    </section>
+
+    <!-- Terminal Output Section -->
+    <section class="section">
+      <div class="terminal-wrapper">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <h2 style="font-size: 0.9rem; font-weight: 700; text-transform: uppercase; color: var(--text-muted);">Activity Log</h2>
+          <button id="clear-logs" class="btn btn-outline" style="padding: 4px 12px; font-size: 0.7rem;">Clear</button>
+        </div>
+        <div id="terminal" class="terminal">
+        </div>
+      </div>
+    </section>
+  </main>
+
   <script src="popup.js"></script>
 </body>
 </html>
