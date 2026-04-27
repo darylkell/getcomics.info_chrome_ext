@@ -261,6 +261,7 @@ h1 {
 .card-actions {
   display: flex;
   gap: 8px;
+  align-items: center;
 }
 
 .status-badge {
@@ -277,6 +278,88 @@ h1 {
 
 .status-idle { background: var(--border-color); color: var(--text-muted); }
 .status-active { background: var(--primary); color: white; }
+
+/* ==========================================================================
+   Details Collapsible & Filters
+   ========================================================================== */
+.details-toggle {
+    font-size: 0.75rem;
+    color: var(--primary);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 4px 0;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.details-toggle:hover {
+    text-decoration: underline;
+}
+
+.details-content {
+    border-top: 1px solid var(--border-color);
+    padding-top: 12px;
+    margin-top: 4px;
+}
+
+.filters-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.filter-item {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.filter-input {
+    flex: 1;
+    padding: 4px 8px;
+    font-size: 0.8rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--bg-card);
+    color: var(--text-main);
+}
+
+.filter-type {
+    padding: 4px;
+    font-size: 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--bg-card);
+    color: var(--text-main);
+    cursor: pointer;
+}
+
+.filter-remove {
+    color: var(--danger);
+    cursor: pointer;
+    font-size: 0.8rem;
+    padding: 4px;
+}
+
+.add-filter-btn {
+    font-size: 0.75rem;
+    padding: 4px 8px;
+    border: 1px dashed var(--primary);
+    color: var(--primary);
+    background: transparent;
+    border-radius: 4px;
+    cursor: pointer;
+    width: 100%;
+    text-align: center;
+}
+
+.add-filter-btn:hover {
+    background: rgba(0, 188, 212, 0.05);
+}
 
 /* ==========================================================================
    Progress & Terminal

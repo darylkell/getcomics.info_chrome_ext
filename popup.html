@@ -106,7 +106,15 @@
       </div>
 
       <div style="margin-top: 16px; border-top: 1px solid var(--border-color); padding-top: 12px;">
-        <p style="font-size: 0.7rem; text-transform: uppercase; font-weight: 700; color: var(--text-muted); margin-bottom: 8px;">Batch Progress</p>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <p style="font-size: 0.7rem; text-transform: uppercase; font-weight: 700; color: var(--text-muted);">Series Progress</p>
+            <span id="series-progress-text" style="font-size: 0.75rem; font-weight: 600; color: var(--primary);"></span>
+        </div>
+        <div class="progress-container" style="display: block; margin-bottom: 12px;">
+          <div id="series-progress-bar" class="progress-bar" style="background: var(--primary-dark); width: 0%;"></div>
+        </div>
+
+        <p style="font-size: 0.7rem; text-transform: uppercase; font-weight: 700; color: var(--text-muted); margin-bottom: 8px;">Batch Progress (Series)</p>
         <div class="progress-container" style="display: block;">
           <div id="progress-bar" class="progress-bar"></div>
         </div>

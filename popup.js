@@ -16,6 +16,8 @@ const verboseCheckbox = document.getElementById("verboseCheckbox");
 const selectAllCheckbox = document.getElementById("selectAllCheckbox");
 const progressSection = document.getElementById("progress-section");
 const progressBar = document.getElementById("progress-bar");
+const seriesProgressBar = document.getElementById("series-progress-bar");
+const seriesProgressText = document.getElementById("series-progress-text");
 const statusText = document.getElementById("status-text");
 const imageContainer = document.getElementById("imageContainer");
 const currentComicImg = document.getElementById("current-comic-img");
@@ -46,6 +48,7 @@ let isPaused = false;
 let isCancelled = false;
 let isSkipping = false;
 let currentDownloadId = null;
+const expandedSeries = new Set();
 
 /**
  * Checks the current control state (Paused/Cancelled).
@@ -235,6 +238,8 @@ function resetProcessUI() {
             currentComicImg.src = "";
             downloadingTitle.textContent = "";
             progressBar.style.width = "0%";
+            seriesProgressBar.style.width = "0%";
+            seriesProgressText.textContent = "";
         }
     }, 3000);
 }
@@ -372,7 +377,7 @@ function addSeries() {
             series[index].date = date;
             log(`Updated date for ${name} to ${date}.`);
         } else {
-            series.push({ name, date });
+            series.push({ name, date, filters: [] });
             log(`Added series: ${name}.`, false, "success");
         }
 
@@ -397,10 +402,13 @@ function displaySeries(series) {
     }
     emptyState.classList.add("hidden");
 
-    for (let { name, date } of sorted(series)) {
+    for (let s of sorted(series)) {
+        const { name, date, filters = [] } = s;
         const card = document.createElement("li");
         card.className = "series-card";
         card.dataset.name = name;
+        
+        const isExpanded = expandedSeries.has(name);
 
         card.innerHTML = `
             <div class="card-header">
@@ -414,22 +422,43 @@ function displaySeries(series) {
                 <input type="checkbox" class="series-checkbox" value="${name}">
             </div>
             <div class="card-actions">
+                <button class="details-toggle" title="Show filters (AND logic)">
+                    <i class="fas fa-chevron-${isExpanded ? 'down' : 'right'}"></i> Details
+                </button>
+                <div style="flex: 1"></div>
                 <button class="btn btn-outline btn-icon remove-btn" title="Remove Series">
                     <i class="fas fa-trash-alt" style="color: var(--danger);"></i>
                 </button>
                 <span class="status-badge status-idle">Idle</span>
             </div>
+            <div class="details-content ${isExpanded ? '' : 'hidden'}">
+                <div class="filters-list">
+                    ${filters.map((f, i) => `
+                        <div class="filter-item" data-index="${i}">
+                            <select class="filter-type">
+                                <option value="positive" ${!f.isNegative ? 'selected' : ''}>Match</option>
+                                <option value="negative" ${f.isNegative ? 'selected' : ''}>Exclude</option>
+                            </select>
+                            <input type="text" class="filter-input" placeholder="Regex pattern" value="${f.pattern}">
+                            <i class="fas fa-times filter-remove" title="Remove filter"></i>
+                        </div>
+                    `).join('')}
+                </div>
+                <button class="add-filter-btn"><i class="fas fa-plus"></i> Add Filter</button>
+            </div>
         `;
 
         card.querySelector(".series-checkbox").addEventListener("change", updateGetRecentButtonState);
 
-        card.querySelector(".remove-btn").addEventListener("click", () => {
+        card.querySelector(".remove-btn").addEventListener("click", (e) => {
+            e.stopPropagation();
             if (confirm(`Remove "${name}" from your list?`)) {
                 removeSeries(name);
             }
         });
 
-        card.querySelector(".editable-date").addEventListener("click", function() {
+        card.querySelector(".editable-date").addEventListener("click", function(e) {
+            e.stopPropagation();
             const newDate = prompt(`Update last-checked date for "${name}":`, date);
             if (newDate && /^\d{4}-\d{2}-\d{2}$/.test(newDate)) {
                 updateSeriesDate(name, newDate);
@@ -438,8 +467,81 @@ function displaySeries(series) {
             }
         });
 
+        // Toggle Details
+        const detailsToggle = card.querySelector(".details-toggle");
+        const detailsContent = card.querySelector(".details-content");
+        detailsToggle.addEventListener("click", () => {
+            const isHidden = detailsContent.classList.toggle("hidden");
+            if (isHidden) {
+                expandedSeries.delete(name);
+            } else {
+                expandedSeries.add(name);
+            }
+            detailsToggle.innerHTML = isHidden ? '<i class="fas fa-chevron-right"></i> Details' : '<i class="fas fa-chevron-down"></i> Details';
+        });
+
+        // Add Filter
+        card.querySelector(".add-filter-btn").addEventListener("click", () => {
+            addFilter(name);
+        });
+
+        // Filter events
+        card.querySelectorAll(".filter-item").forEach(item => {
+            const index = parseInt(item.dataset.index);
+            
+            item.querySelector(".filter-type").addEventListener("change", (e) => {
+                updateFilter(name, index, { isNegative: e.target.value === "negative" });
+            });
+
+            item.querySelector(".filter-input").addEventListener("change", (e) => {
+                updateFilter(name, index, { pattern: e.target.value });
+            });
+
+            item.querySelector(".filter-remove").addEventListener("click", () => {
+                removeFilter(name, index);
+            });
+        });
+
         seriesList.appendChild(card);
     }
+}
+
+function addFilter(seriesName) {
+    chrome.storage.sync.get("comicSeries", (data) => {
+        const series = data.comicSeries || [];
+        const s = series.find(obj => obj.name === seriesName);
+        if (s) {
+            if (!s.filters) s.filters = [];
+            s.filters.push({ pattern: "", isNegative: false });
+            chrome.storage.sync.set({ comicSeries: series }, () => {
+                displaySeries(series);
+            });
+        }
+    });
+}
+
+function updateFilter(seriesName, index, updates) {
+    chrome.storage.sync.get("comicSeries", (data) => {
+        const series = data.comicSeries || [];
+        const s = series.find(obj => obj.name === seriesName);
+        if (s && s.filters && s.filters[index]) {
+            Object.assign(s.filters[index], updates);
+            chrome.storage.sync.set({ comicSeries: series });
+        }
+    });
+}
+
+function removeFilter(seriesName, index) {
+    chrome.storage.sync.get("comicSeries", (data) => {
+        const series = data.comicSeries || [];
+        const s = series.find(obj => obj.name === seriesName);
+        if (s && s.filters) {
+            s.filters.splice(index, 1);
+            chrome.storage.sync.set({ comicSeries: series }, () => {
+                displaySeries(series);
+            });
+        }
+    });
 }
 
 function updateSeriesDate(name, newDate) {
@@ -540,12 +642,45 @@ async function searchAndDownloadSeries(seriesName, date) {
 
     log(`${seriesName}: Found ${comicLinks.length} new issues.`, false, comicLinks.length > 0 ? "success" : "info");
 
-    for (let i = 0; i < comicLinks.length; i++) {
+    // Apply regex filters
+    const data = await chrome.storage.sync.get("comicSeries");
+    const seriesData = data.comicSeries || [];
+    const currentSeries = seriesData.find(obj => obj.name.toLowerCase() === seriesName.toLowerCase());
+    
+    let filteredComicLinks = comicLinks;
+    if (currentSeries && currentSeries.filters && currentSeries.filters.length > 0) {
+        filteredComicLinks = comicLinks.filter(link => {
+            return currentSeries.filters.every(f => {
+                if (!f.pattern) return true;
+                try {
+                    const regex = new RegExp(f.pattern, "i");
+                    const matches = regex.test(link.title);
+                    const result = f.isNegative ? !matches : matches;
+                    if (!result) {
+                        log(`Filtering out: "${link.title}" (failed ${f.isNegative ? 'negative' : 'positive'} filter: ${f.pattern})`, true, "warning");
+                    }
+                    return result;
+                } catch (e) {
+                    log(`Invalid regex pattern: ${f.pattern}`, false, "error");
+                    return true; // Skip invalid regex
+                }
+            });
+        });
+        
+        if (filteredComicLinks.length !== comicLinks.length) {
+            log(`${seriesName}: ${filteredComicLinks.length} issues remaining after filtering.`, false, "info");
+        }
+    }
+
+    for (let i = 0; i < filteredComicLinks.length; i++) {
         await checkControlState();
 
-        if (badge) badge.textContent = `Downloading ${i+1}/${comicLinks.length}`;
-        const comicLink = comicLinks[i];
-        document.title = `[Downloading ${i+1}/${comicLinks.length}] ${seriesName}`;
+        if (badge) badge.textContent = `Downloading ${i+1}/${filteredComicLinks.length}`;
+        seriesProgressText.textContent = `${i+1} / ${filteredComicLinks.length}`;
+        seriesProgressBar.style.width = `${((i + 1) / filteredComicLinks.length) * 100}%`;
+        
+        const comicLink = filteredComicLinks[i];
+        document.title = `[Downloading ${i+1}/${filteredComicLinks.length}] ${seriesName}`;
 
         let downloadLinks = [];
         try {
