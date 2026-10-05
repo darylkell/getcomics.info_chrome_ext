@@ -21,6 +21,17 @@ const seriesProgressText = document.getElementById("series-progress-text");
 const statusText = document.getElementById("status-text");
 const imageContainer = document.getElementById("imageContainer");
 const currentComicImg = document.getElementById("current-comic-img");
+currentComicImg.style.cursor = "zoom-in";
+currentComicImg.addEventListener("click", () => {
+  if (!currentComicImg.src) return;
+  const overlay = document.createElement("div");
+  overlay.className = "cover-overlay";
+  const big = document.createElement("img");
+  big.src = currentComicImg.src;
+  overlay.appendChild(big);
+  overlay.addEventListener("click", () => overlay.remove());
+  document.body.appendChild(overlay);
+});
 const downloadingTitle = document.getElementById("downloadingTitle");
 const emptyState = document.getElementById("empty-state");
 const clearLogsButton = document.getElementById("clear-logs");

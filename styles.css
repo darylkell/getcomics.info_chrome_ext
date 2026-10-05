@@ -469,3 +469,5 @@ input:checked + .slider:before { transform: translateX(20px); }
   border-radius: 10px;
 }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+.cover-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 9999; cursor: zoom-out; }
+.cover-overlay img { max-width: 90vw; max-height: 90vh; border-radius: 8px; box-shadow: 0 0 30px rgba(0,0,0,0.6); }
