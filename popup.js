@@ -289,10 +289,15 @@ function updateGetRecentButtonState() {
     getRecentButton.disabled = !anyChecked;
 }
 
+/** Running totals for the current Get Recent run. */
+const runTotals = { downloaded: 0, failed: 0 };
+
 /**
  * Orchestrates the download of all selected series.
  */
 async function downloadAllSelected() {
+    runTotals.downloaded = 0;
+    runTotals.failed = 0;
     return new Promise(async (resolve, reject) => {
         try {
             const data = await chrome.storage.sync.get("comicSeries");
@@ -353,7 +358,7 @@ async function downloadAllSelected() {
                 progressBar.style.width = `${percent}%`;
             }
             
-            log("All selected series processed.", false, "success");
+            log(`All selected series processed: ${runTotals.downloaded} downloaded, ${runTotals.failed} failed.`, false, "success");
             statusText.textContent = "Finished processing all series.";
             
             if (pagesFoundWithoutDownloadButtons.length > 0) {
@@ -428,6 +433,14 @@ function displaySeries(series) {
                     <div class="series-date">
                         <i class="far fa-calendar-alt"></i> 
                         <span class="editable-date" title="Click to edit date">${date}</span>
+                    </div>
+                    <div class="series-date download-count" title="Issues downloaded">
+                        <i class="fas fa-download"></i>
+                        <span class="download-count-value">${s.downloaded || 0}</span> downloaded
+                    </div>
+                    <div class="series-date fail-count ${s.failed ? '' : 'hidden'}" title="Issues that failed" style="color: var(--danger);">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <span class="fail-count-value">${s.failed || 0}</span> failed
                     </div>
                 </div>
                 <input type="checkbox" class="series-checkbox" value="${name}">
@@ -612,6 +625,22 @@ async function withRetry(fn, retries = 3, delay = 2000) {
 }
 
 /**
+ * Increments a persisted per-series counter ("downloaded" or "failed") and updates the card and run totals.
+ */
+async function bumpSeriesCount(seriesName, card, field) {
+    const stored = await chrome.storage.sync.get("comicSeries");
+    const all = stored.comicSeries || [];
+    const s = all.find(obj => obj.name.toLowerCase() === seriesName.toLowerCase());
+    runTotals[field]++;
+    if (!s) return;
+    s[field] = (s[field] || 0) + 1;
+    await chrome.storage.sync.set({ comicSeries: all });
+    const valueEl = card && card.querySelector(field === "failed" ? ".fail-count-value" : ".download-count-value");
+    if (valueEl) valueEl.textContent = s[field];
+    if (field === "failed" && card) card.querySelector(".fail-count").classList.remove("hidden");
+}
+
+/**
  * Scrapes and downloads a single series.
  */
 async function searchAndDownloadSeries(seriesName, date) {
@@ -712,12 +741,14 @@ async function searchAndDownloadSeries(seriesName, date) {
         } catch (error) {
             if (error.message === "CANCELLED_BY_USER") throw error;
             log(`Network error fetching details for ${comicLink.title}: ${error.message}`, false, "error");
+            await bumpSeriesCount(seriesName, card, "failed");
             continue;
         }
 
         if (downloadLinks.length === 0) {
             log(`Skipped: ${comicLink.title} (No download link found)`, true, "error");
             pagesFoundWithoutDownloadButtons.push(comicLink);
+            await bumpSeriesCount(seriesName, card, "failed");
             continue;
         }
 
@@ -726,6 +757,7 @@ async function searchAndDownloadSeries(seriesName, date) {
         currentComicImg.src = comicLink.image;
         downloadingTitle.textContent = `Downloading: ${comicLink.title}`;
 
+        let completedParts = 0, hadError = false;
         for (let j = 0; j < downloadLinks.length; j++) {
             await checkControlState();
             isSkipping = false; // Reset skip flag for each part
@@ -738,9 +770,11 @@ async function searchAndDownloadSeries(seriesName, date) {
                     log(`Skipped part ${j+1} of '${comicLink.title}'`, false, "warning");
                     continue; // Move to next part
                 }
+                completedParts++;
             } catch (error) {
                 if (error.message === "CANCELLED_BY_USER") throw error;
                 log(`Failed to download '${comicLink.title}': ${error.message}`, false, "error");
+                hadError = true;
                 
                 // Provide manual download link
                 const manualLine = document.createElement("div");
@@ -750,6 +784,9 @@ async function searchAndDownloadSeries(seriesName, date) {
                 terminal.scrollTop = terminal.scrollHeight;
             }
         }
+
+        if (completedParts > 0) await bumpSeriesCount(seriesName, card, "downloaded");
+        else if (hadError) await bumpSeriesCount(seriesName, card, "failed");
     }
 
     if (badge) {
